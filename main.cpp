@@ -30,6 +30,9 @@ public:
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_ShowWithoutActivating);
         
+        // 启用鼠标追踪
+        setMouseTracking(true);
+        
         // 启用 dxcb 平台处理
         DPlatformWindowHandle::enableDXcbForWindow(this);
         m_handle = new DPlatformWindowHandle(this, this);
@@ -54,6 +57,7 @@ public:
         
         // 创建 TodoWidget
         m_todoWidget = new TodoWidget(this);
+        m_todoWidget->setMouseTracking(true);
         setCentralWidget(m_todoWidget);
         
         // 设置最小和初始大小
@@ -65,6 +69,18 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::MouseMove) {
+            QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (!m_dragging && !m_resizing) {
+                Edge edge = getResizeEdge(mouseEvent->pos());
+                updateCursor(edge);
+            }
+        }
+        return QMainWindow::event(event);
+    }
+
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton) {
@@ -140,9 +156,17 @@ protected:
                 saveGeometry();
             }
             event->accept();
-            setCursor(Qt::ArrowCursor);
+            // 恢复光标
+            Edge edge = getResizeEdge(event->pos());
+            updateCursor(edge);
         }
         QMainWindow::mouseReleaseEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        setCursor(Qt::ArrowCursor);
+        QMainWindow::leaveEvent(event);
     }
 
     void closeEvent(QCloseEvent *event) override
