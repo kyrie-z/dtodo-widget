@@ -12,6 +12,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 find_package(Dtk6Core REQUIRED)
 find_package(Dtk6Gui REQUIRED)
 find_package(Dtk6Widget REQUIRED)
+find_package(X11 REQUIRED)
 
 add_executable(dtk-todo-widget
     main.cpp
@@ -28,8 +29,10 @@ target_link_libraries(dtk-todo-widget PRIVATE
     Dtk6::Core
     Dtk6::Gui
     Dtk6::Widget
+    X11
 )
 
 target_include_directories(dtk-todo-widget PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${X11_INCLUDE_DIR}
 )
