@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 find_package(Dtk6Core REQUIRED)
 find_package(Dtk6Gui REQUIRED)
 find_package(Dtk6Widget REQUIRED)
@@ -24,6 +24,7 @@ add_executable(dtk-todo-widget
 target_link_libraries(dtk-todo-widget PRIVATE
     Qt6::Core
     Qt6::Widgets
+    Qt6::Gui
     Dtk6::Core
     Dtk6::Gui
     Dtk6::Widget

@@ -1,63 +1,50 @@
 #include <DApplication>
-#include <DPlatformWindowHandle>
+#include <DMainWindow>
 #include "todowidget.h"
 
-#include <QMainWindow>
 #include <QScreen>
 #include <QSettings>
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QCloseEvent>
+#include <QWindow>
 
 DWIDGET_USE_NAMESPACE
 
-class DesktopWidget : public QMainWindow
+class DesktopWidget : public DMainWindow
 {
     Q_OBJECT
 
 public:
     explicit DesktopWidget(QWidget *parent = nullptr)
-        : QMainWindow(parent)
+        : DMainWindow(parent)
         , m_dragging(false)
-        , m_handle(nullptr)
     {
-        // 无边框、保持在底部
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
+        // 无边框、保持在底部、工具窗口(不显示在任务栏和Alt+Tab)
+        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint | Qt::Tool);
         
         // 窗口透明
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_ShowWithoutActivating);
+        setAttribute(Qt::WA_X11NetWmWindowTypeDesktop);
         
-        // 启用 dxcb 平台处理
-        DPlatformWindowHandle::enableDXcbForWindow(this);
-        m_handle = new DPlatformWindowHandle(this, this);
-        
-        // 设置窗口圆角
-        m_handle->setWindowRadius(12);
-        
-        // 设置边框
-        m_handle->setBorderWidth(1);
-        m_handle->setBorderColor(QColor(80, 80, 80, 180));
-        
-        // 设置阴影
-        m_handle->setShadowRadius(20);
-        m_handle->setShadowOffset(QPoint(0, 8));
-        m_handle->setShadowColor(QColor(0, 0, 0, 100));
-        
-        // 透明背景
-        m_handle->setTranslucentBackground(true);
-        m_handle->setEnableSystemResize(false);
-        m_handle->setEnableSystemMove(false);
-        m_handle->setEnableBlurWindow(true);
+        // 设置窗口属性
+        setWindowRadius(12);
+        setBorderWidth(1);
+        setBorderColor(QColor(255, 255, 255, 25));
+        setShadowRadius(30);
+        setShadowOffset(QPoint(0, 10));
+        setShadowColor(QColor(0, 0, 0, 80));
+        setTranslucentBackground(true);
+        setEnableSystemResize(false);
+        setEnableSystemMove(false);
+        setEnableBlurWindow(true);
         
         // 创建 TodoWidget
         m_todoWidget = new TodoWidget(this);
         setCentralWidget(m_todoWidget);
         
-        // 设置固定大小
         setFixedSize(350, 500);
-        
-        // 加载保存的位置
         loadPosition();
     }
 
@@ -69,7 +56,7 @@ protected:
             m_dragPos = event->globalPosition().toPoint() - frameGeometry().topLeft();
             event->accept();
         }
-        QMainWindow::mousePressEvent(event);
+        DMainWindow::mousePressEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
@@ -78,7 +65,7 @@ protected:
             move(event->globalPosition().toPoint() - m_dragPos);
             event->accept();
         }
-        QMainWindow::mouseMoveEvent(event);
+        DMainWindow::mouseMoveEvent(event);
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
@@ -88,13 +75,13 @@ protected:
             savePosition();
             event->accept();
         }
-        QMainWindow::mouseReleaseEvent(event);
+        DMainWindow::mouseReleaseEvent(event);
     }
 
     void closeEvent(QCloseEvent *event) override
     {
         savePosition();
-        QMainWindow::closeEvent(event);
+        DMainWindow::closeEvent(event);
     }
 
 private:
@@ -122,7 +109,6 @@ private:
     }
 
     TodoWidget *m_todoWidget;
-    DPlatformWindowHandle *m_handle;
     bool m_dragging;
     QPoint m_dragPos;
 };
