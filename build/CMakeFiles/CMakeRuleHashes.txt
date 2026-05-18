@@ -1,3 +1,0 @@
-# Hashes of file build rules.
-cc28db23bb9712403322140be2e6d708 CMakeFiles/dtk-todo-widget_autogen
-1272260f2969433c3646db26bfa45d75 dtk-todo-widget_autogen/timestamp
