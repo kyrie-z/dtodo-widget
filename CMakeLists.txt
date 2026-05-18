@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(dtk-todo-widget VERSION 1.0.0 LANGUAGES CXX)
+project(dtodo-widget VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ find_package(Dtk6Gui REQUIRED)
 find_package(Dtk6Widget REQUIRED)
 find_package(X11 REQUIRED)
 
-add_executable(dtk-todo-widget
+add_executable(dtodo-widget
     main.cpp
     todowidget.cpp
     todowidget.h
@@ -22,7 +22,7 @@ add_executable(dtk-todo-widget
     todoitem.h
 )
 
-target_link_libraries(dtk-todo-widget PRIVATE
+target_link_libraries(dtodo-widget PRIVATE
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
@@ -32,7 +32,7 @@ target_link_libraries(dtk-todo-widget PRIVATE
     X11
 )
 
-target_include_directories(dtk-todo-widget PRIVATE
+target_include_directories(dtodo-widget PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${X11_INCLUDE_DIR}
 )

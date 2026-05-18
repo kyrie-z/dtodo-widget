@@ -215,14 +215,14 @@ private:
 
     void saveGeometry()
     {
-        QSettings settings("dtk-todo-widget", "geometry");
+        QSettings settings("dtodo-widget", "geometry");
         settings.setValue("pos", pos());
         settings.setValue("size", size());
     }
 
     void loadGeometry()
     {
-        QSettings settings("dtk-todo-widget", "geometry");
+        QSettings settings("dtodo-widget", "geometry");
         QPoint savedPos = settings.value("pos").toPoint();
         QSize savedSize = settings.value("size").toSize();
         
@@ -255,8 +255,8 @@ private:
 int main(int argc, char *argv[])
 {
     DApplication a(argc, argv);
-    a.setProductName("dtk-todo-widget");
-    a.setApplicationName("dtk-todo-widget");
+    a.setProductName("dtodo-widget");
+    a.setApplicationName("dtodo-widget");
     a.setApplicationVersion("1.0.0");
     a.setProductIcon(QIcon::fromTheme("preferences-system"));
     a.setWindowIcon(QIcon::fromTheme("preferences-system"));
