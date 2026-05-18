@@ -6,13 +6,14 @@
 #include <DPushButton>
 #include <DListView>
 #include <DLabel>
+#include <DBlurEffectWidget>
 #include <QStandardItemModel>
 
 #include "todoitem.h"
 
 DWIDGET_USE_NAMESPACE
 
-class TodoWidget : public QWidget
+class TodoWidget : public DBlurEffectWidget
 {
     Q_OBJECT
 

@@ -1,0 +1,5 @@
+/home/uos/widgets/dtk-todo-widget/build/CMakeFiles/dtk-todo-widget.dir
+/home/uos/widgets/dtk-todo-widget/build/CMakeFiles/edit_cache.dir
+/home/uos/widgets/dtk-todo-widget/build/CMakeFiles/rebuild_cache.dir
+/home/uos/widgets/dtk-todo-widget/build/CMakeFiles/dtk-todo-widget_autogen_timestamp_deps.dir
+/home/uos/widgets/dtk-todo-widget/build/CMakeFiles/dtk-todo-widget_autogen.dir

@@ -11,14 +11,16 @@
 DWIDGET_USE_NAMESPACE
 
 TodoWidget::TodoWidget(QWidget *parent)
-    : QWidget(parent)
+    : DBlurEffectWidget(parent)
     , m_nextId(1)
 {
-    // 设置背景色
-    setAutoFillBackground(true);
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(40, 40, 40, 220));
-    setPalette(pal);
+    // 设置模糊特效
+    setMode(DBlurEffectWidget::GaussianBlur);
+    setBlendMode(DBlurEffectWidget::InWidgetBlend);
+    setMaskAlpha(0);
+    setRadius(20);
+    setBlurRectXRadius(12);
+    setBlurRectYRadius(12);
     
     setupUI();
     loadTodos();
