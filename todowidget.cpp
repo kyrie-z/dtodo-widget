@@ -7,21 +7,29 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDir>
+#include <QGraphicsDropShadowEffect>
+#include <DPalette>
+#include <DGuiApplicationHelper>
+#include <DPaletteHelper>
 
 DWIDGET_USE_NAMESPACE
 
 TodoWidget::TodoWidget(QWidget *parent)
     : DBlurEffectWidget(parent)
     , m_nextId(1)
+    , m_contextMenu(nullptr)
 {
-    // 设置模糊特效
+    // 设置模糊特效 - 符合 DTK 设计规范的毛玻璃效果
     setMode(DBlurEffectWidget::GaussianBlur);
-    setBlendMode(DBlurEffectWidget::InWidgetBlend);
-    setMaskAlpha(0);
-    setRadius(20);
+    setBlendMode(DBlurEffectWidget::BehindWindowBlend);
+    setRadius(30);
     setBlurRectXRadius(12);
     setBlurRectYRadius(12);
-    
+
+    // 使用 AutoColor 自动跟随主题
+    // 浅色主题白色背景，深色主题深色背景
+    setMaskColor(AutoColor);
+
     setupUI();
     loadTodos();
 }
@@ -29,36 +37,70 @@ TodoWidget::TodoWidget(QWidget *parent)
 void TodoWidget::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(15, 15, 15, 15);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(12);
 
     // 输入区域
     QHBoxLayout *inputLayout = new QHBoxLayout();
-    inputLayout->setSpacing(8);
+    inputLayout->setSpacing(10);
 
     m_inputEdit = new DLineEdit(this);
     m_inputEdit->setPlaceholderText("添加新的待办事项...");
     m_inputEdit->setClearButtonEnabled(true);
 
     DPushButton *addBtn = new DPushButton("添加", this);
-    addBtn->setFixedSize(60, 36);
+    addBtn->setFixedSize(64, 36);
 
     inputLayout->addWidget(m_inputEdit);
     inputLayout->addWidget(addBtn);
 
     mainLayout->addLayout(inputLayout);
 
-    // 列表区域
-    m_listView = new DListView(this);
+    // 使用 QStackedWidget 实现空态切换
+    m_stackWidget = new QStackedWidget(this);
+
+    // 列表容器
+    m_listContainer = new QWidget(m_stackWidget);
+    QVBoxLayout *listLayout = new QVBoxLayout(m_listContainer);
+    listLayout->setContentsMargins(0, 0, 0, 0);
+    listLayout->setSpacing(0);
+
+    m_listView = new DListView(m_listContainer);
     m_listView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_listView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_listView->setBackgroundType(DStyledItemDelegate::RoundedBackground);
-    m_listView->setItemSpacing(5);
+    m_listView->setItemSpacing(6);
+    m_listView->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_listView->setViewportMargins(0, 0, 0, 0);
+
+    // 启用 hover 效果
+    m_listView->setMouseTracking(true);
 
     m_model = new QStandardItemModel(this);
     m_listView->setModel(m_model);
 
-    mainLayout->addWidget(m_listView, 1);
+    listLayout->addWidget(m_listView);
+
+    // 空态提示
+    QWidget *emptyWidget = new QWidget(m_stackWidget);
+    QVBoxLayout *emptyLayout = new QVBoxLayout(emptyWidget);
+    emptyLayout->setAlignment(Qt::AlignCenter);
+
+    m_emptyLabel = new DLabel(emptyWidget);
+    m_emptyLabel->setText("暂无待办事项\n输入内容后按回车添加");
+    m_emptyLabel->setAlignment(Qt::AlignCenter);
+    // 使用 DTK 主题色设置空态提示文字颜色
+    DPalette pa = DPaletteHelper::instance()->palette(m_emptyLabel);
+    pa.setColor(DPalette::WindowText, pa.color(DPalette::PlaceholderText));
+    DPaletteHelper::instance()->setPalette(m_emptyLabel, pa);
+    m_emptyLabel->setWordWrap(true);
+
+    emptyLayout->addWidget(m_emptyLabel);
+
+    m_stackWidget->addWidget(m_listContainer);
+    m_stackWidget->addWidget(emptyWidget);
+
+    mainLayout->addWidget(m_stackWidget, 1);
 
     // 底部统计
     QHBoxLayout *bottomLayout = new QHBoxLayout();
@@ -68,12 +110,25 @@ void TodoWidget::setupUI()
 
     mainLayout->addLayout(bottomLayout);
 
+    // 右键菜单
+    m_contextMenu = new DMenu(this);
+    QAction *toggleAction = m_contextMenu->addAction("切换完成状态");
+    QAction *deleteAction = m_contextMenu->addAction("删除");
+
     // 连接信号
     connect(addBtn, &DPushButton::clicked, this, &TodoWidget::addTodo);
     connect(m_inputEdit, &DLineEdit::returnPressed, this, &TodoWidget::onReturnPressed);
     connect(m_listView, &DListView::doubleClicked, this, &TodoWidget::toggleCompleted);
+    connect(m_listView, &DListView::customContextMenuRequested, this, &TodoWidget::showContextMenu);
+    connect(toggleAction, &QAction::triggered, this, [this]() {
+        if (m_contextIndex.isValid()) {
+            toggleCompleted(m_contextIndex);
+        }
+    });
+    connect(deleteAction, &QAction::triggered, this, &TodoWidget::removeTodo);
 
     updateCountLabel();
+    updateEmptyState();
 }
 
 void TodoWidget::addTodo()
@@ -94,20 +149,22 @@ void TodoWidget::addTodo()
 
     m_inputEdit->clear();
     updateCountLabel();
+    updateEmptyState();
     saveTodos();
 }
 
-void TodoWidget::removeTodo(const QModelIndex &index)
+void TodoWidget::removeTodo()
 {
-    if (!index.isValid()) return;
+    if (!m_contextIndex.isValid()) return;
 
-    int row = index.row();
+    int row = m_contextIndex.row();
     if (row >= 0 && row < m_todos.size()) {
         m_todos.removeAt(row);
     }
     m_model->removeRow(row);
 
     updateCountLabel();
+    updateEmptyState();
     saveTodos();
 }
 
@@ -126,14 +183,33 @@ void TodoWidget::toggleCompleted(const QModelIndex &index)
             QFont font = item->font();
             font.setStrikeOut(completed);
             item->setFont(font);
+
+            // 使用 DTK 主题色区分完成状态的前景色
+            // 已完成项使用 PlaceholderText 颜色（次要文字色）
+            DPalette pa = DPaletteHelper::instance()->palette(m_listView);
+            if (completed) {
+                item->setForeground(pa.color(DPalette::PlaceholderText));
+            } else {
+                item->setForeground(pa.color(DPalette::Text));
+            }
         }
     }
+    updateCountLabel();
     saveTodos();
 }
 
 void TodoWidget::onReturnPressed()
 {
     addTodo();
+}
+
+void TodoWidget::showContextMenu(const QPoint &pos)
+{
+    QModelIndex index = m_listView->indexAt(pos);
+    if (index.isValid()) {
+        m_contextIndex = index;
+        m_contextMenu->exec(m_listView->viewport()->mapToGlobal(pos));
+    }
 }
 
 void TodoWidget::updateCountLabel()
@@ -144,6 +220,15 @@ void TodoWidget::updateCountLabel()
         if (item.completed()) completed++;
     }
     m_countLabel->setText(QString("共 %1 项 | 已完成 %2 项").arg(total).arg(completed));
+}
+
+void TodoWidget::updateEmptyState()
+{
+    if (m_model->rowCount() == 0) {
+        m_stackWidget->setCurrentWidget(m_emptyLabel->parentWidget());
+    } else {
+        m_stackWidget->setCurrentWidget(m_listContainer);
+    }
 }
 
 void TodoWidget::saveTodos()
@@ -176,9 +261,28 @@ void TodoWidget::loadTodos()
     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QFile file(dataPath + "/todos.json");
     if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QByteArray jsonData = file.readAll();
+        file.close();
+
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(jsonData, &parseError);
+
+        if (parseError.error != QJsonParseError::NoError) {
+            qWarning() << "JSON parse error:" << parseError.errorString();
+            updateCountLabel();
+            updateEmptyState();
+            return;
+        }
+
+        if (!doc.isArray()) {
+            qWarning() << "Invalid JSON format: expected array";
+            updateCountLabel();
+            updateEmptyState();
+            return;
+        }
+
         QJsonArray array = doc.array();
-        
+
         for (const auto &value : array) {
             QJsonObject obj = value.toObject();
             TodoItem item(obj["text"].toString());
@@ -201,7 +305,7 @@ void TodoWidget::loadTodos()
             }
             m_model->appendRow(modelItem);
         }
-        file.close();
     }
     updateCountLabel();
+    updateEmptyState();
 }

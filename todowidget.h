@@ -7,7 +7,9 @@
 #include <DListView>
 #include <DLabel>
 #include <DBlurEffectWidget>
+#include <DMenu>
 #include <QStandardItemModel>
+#include <QStackedWidget>
 
 #include "todoitem.h"
 
@@ -22,20 +24,27 @@ public:
 
 private Q_SLOTS:
     void addTodo();
-    void removeTodo(const QModelIndex &index);
+    void removeTodo();
     void toggleCompleted(const QModelIndex &index);
     void onReturnPressed();
+    void showContextMenu(const QPoint &pos);
 
 private:
     void setupUI();
     void updateCountLabel();
     void saveTodos();
     void loadTodos();
+    void updateEmptyState();
 
     DLineEdit *m_inputEdit;
     DListView *m_listView;
     QStandardItemModel *m_model;
     DLabel *m_countLabel;
+    DLabel *m_emptyLabel;
+    QStackedWidget *m_stackWidget;
+    QWidget *m_listContainer;
+    DMenu *m_contextMenu;
+    QModelIndex m_contextIndex;
     QList<TodoItem> m_todos;
     int m_nextId;
 };

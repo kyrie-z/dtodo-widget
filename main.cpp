@@ -1,8 +1,11 @@
 #include <DApplication>
-#include <DPlatformWindowHandle>
+#include <DMainWindow>
+#include <DTitlebar>
+#include <DPalette>
+#include <DGuiApplicationHelper>
+#include <DPaletteHelper>
 #include "todowidget.h"
 
-#include <QMainWindow>
 #include <QScreen>
 #include <QSettings>
 #include <QGuiApplication>
@@ -11,61 +14,61 @@
 
 DWIDGET_USE_NAMESPACE
 
-class DesktopWidget : public QMainWindow
+class DesktopWidget : public DMainWindow
 {
     Q_OBJECT
 
 public:
     explicit DesktopWidget(QWidget *parent = nullptr)
-        : QMainWindow(parent)
+        : DMainWindow(parent)
         , m_dragging(false)
         , m_resizing(false)
         , m_resizeEdge(EdgeNone)
-        , m_handle(nullptr)
     {
-        // 无边框、保持在底部
+        // 无边框、保持在底部 - 桌面小组件风格
         setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
-        
+
+        // 隐藏标题栏并设置固定高度为 0
+        titlebar()->setFixedHeight(0);
+
         // 窗口透明
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_ShowWithoutActivating);
-        
+
         // 启用鼠标追踪
         setMouseTracking(true);
-        
-        // 启用 dxcb 平台处理
-        DPlatformWindowHandle::enableDXcbForWindow(this);
-        m_handle = new DPlatformWindowHandle(this, this);
-        
-        // 设置窗口圆角
-        m_handle->setWindowRadius(12);
-        
-        // 设置边框
-        m_handle->setBorderWidth(1);
-        m_handle->setBorderColor(QColor(80, 80, 80, 180));
-        
-        // 设置阴影
-        m_handle->setShadowRadius(20);
-        m_handle->setShadowOffset(QPoint(0, 8));
-        m_handle->setShadowColor(QColor(0, 0, 0, 100));
-        
-        // 透明背景
-        m_handle->setTranslucentBackground(true);
-        m_handle->setEnableSystemResize(false);
-        m_handle->setEnableSystemMove(false);
-        m_handle->setEnableBlurWindow(true);
-        
+
+        // 使用 DMainWindow 的属性设置窗口样式
+        setWindowRadius(12);
+        setBorderWidth(0);
+        setShadowRadius(20);
+        setShadowOffset(QPoint(0, 8));
+        setTranslucentBackground(true);
+        setEnableSystemResize(false);
+        setEnableSystemMove(false);
+        setEnableBlurWindow(true);
+
+        // 初始化颜色
+        updateBorderColor();
+        updateShadowColor();
+
         // 创建 TodoWidget
         m_todoWidget = new TodoWidget(this);
         m_todoWidget->setMouseTracking(true);
         setCentralWidget(m_todoWidget);
-        
+
         // 设置最小和初始大小
         setMinimumSize(250, 300);
         resize(350, 500);
-        
+
         // 加载保存的位置和大小
         loadGeometry();
+
+        // 监听主题变化，更新边框和阴影颜色
+        connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
+            updateBorderColor();
+            updateShadowColor();
+        });
     }
 
 protected:
@@ -78,7 +81,7 @@ protected:
                 updateCursor(edge);
             }
         }
-        return QMainWindow::event(event);
+        return DMainWindow::event(event);
     }
 
     void mousePressEvent(QMouseEvent *event) override
@@ -95,7 +98,7 @@ protected:
             }
             event->accept();
         }
-        QMainWindow::mousePressEvent(event);
+        DMainWindow::mousePressEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
@@ -103,10 +106,10 @@ protected:
         if (m_resizing) {
             QPoint delta = event->globalPosition().toPoint() - m_resizeStartPos;
             QRect newGeom = m_resizeStartGeom;
-            
+
             int minWidth = minimumWidth();
             int minHeight = minimumHeight();
-            
+
             if (m_resizeEdge & EdgeLeft) {
                 newGeom.setLeft(m_resizeStartGeom.left() + delta.x());
                 if (newGeom.width() < minWidth) {
@@ -131,7 +134,7 @@ protected:
                     newGeom.setBottom(m_resizeStartGeom.top() + minHeight);
                 }
             }
-            
+
             setGeometry(newGeom);
             event->accept();
         } else if (m_dragging) {
@@ -142,7 +145,7 @@ protected:
             Edge edge = getResizeEdge(event->pos());
             updateCursor(edge);
         }
-        QMainWindow::mouseMoveEvent(event);
+        DMainWindow::mouseMoveEvent(event);
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
@@ -160,19 +163,19 @@ protected:
             Edge edge = getResizeEdge(event->pos());
             updateCursor(edge);
         }
-        QMainWindow::mouseReleaseEvent(event);
+        DMainWindow::mouseReleaseEvent(event);
     }
 
     void leaveEvent(QEvent *event) override
     {
         setCursor(Qt::ArrowCursor);
-        QMainWindow::leaveEvent(event);
+        DMainWindow::leaveEvent(event);
     }
 
     void closeEvent(QCloseEvent *event) override
     {
         saveGeometry();
-        QMainWindow::closeEvent(event);
+        DMainWindow::closeEvent(event);
     }
 
 private:
@@ -188,13 +191,13 @@ private:
     {
         const int margin = 8;
         Edge edge = EdgeNone;
-        
+
         if (pos.x() < margin) edge = Edge(edge | EdgeLeft);
         else if (pos.x() > width() - margin) edge = Edge(edge | EdgeRight);
-        
+
         if (pos.y() < margin) edge = Edge(edge | EdgeTop);
         else if (pos.y() > height() - margin) edge = Edge(edge | EdgeBottom);
-        
+
         return edge;
     }
 
@@ -213,6 +216,23 @@ private:
         }
     }
 
+    // 使用 DTK 主题色更新边框颜色
+    void updateBorderColor()
+    {
+        DPalette pa = DPaletteHelper::instance()->palette(this);
+        QColor borderColor = pa.color(DPalette::FrameBorder);
+        borderColor.setAlpha(180);
+        setBorderColor(borderColor);
+    }
+
+    // 使用 DTK 主题色更新阴影颜色
+    void updateShadowColor()
+    {
+        DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType
+            ? setShadowColor(QColor(0, 0, 0, 80))
+            : setShadowColor(QColor(0, 0, 0, 60));
+    }
+
     void saveGeometry()
     {
         QSettings settings("dtodo-widget", "geometry");
@@ -225,14 +245,14 @@ private:
         QSettings settings("dtodo-widget", "geometry");
         QPoint savedPos = settings.value("pos").toPoint();
         QSize savedSize = settings.value("size").toSize();
-        
+
         QScreen *screen = QGuiApplication::primaryScreen();
         QRect screenRect = screen->availableGeometry();
-        
+
         if (savedSize.isValid() && savedSize.width() >= minimumWidth() && savedSize.height() >= minimumHeight()) {
             resize(savedSize);
         }
-        
+
         if (savedPos.x() >= 0 && savedPos.y() >= 0 &&
             savedPos.x() < screenRect.width() - 100 &&
             savedPos.y() < screenRect.height() - 100) {
@@ -243,7 +263,6 @@ private:
     }
 
     TodoWidget *m_todoWidget;
-    DPlatformWindowHandle *m_handle;
     bool m_dragging;
     bool m_resizing;
     QPoint m_dragPos;
@@ -264,7 +283,7 @@ int main(int argc, char *argv[])
     DesktopWidget w;
     w.setWindowTitle("Todo 小组件");
     w.show();
-    
+
     return a.exec();
 }
 
