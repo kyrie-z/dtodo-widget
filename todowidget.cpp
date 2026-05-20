@@ -57,6 +57,7 @@ TodoWidget::TodoWidget(QWidget *parent)
     , m_blurEnabled(true)
     , m_maskAlpha(180)
     , m_showCreateTime(false)
+    , m_followSystemTheme(true)
 {
     // 加载模糊效果设置
     loadBlurSettings();
@@ -246,6 +247,9 @@ void TodoWidget::setupUI()
     connect(deleteAction, &QAction::triggered, this, &TodoWidget::removeTodo);
 
     // 监听主题变化
+    connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged,
+            this, &TodoWidget::updateThemeColors);
+    // 同步主题菜单勾选状态（系统切换主题时）
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged,
             this, &TodoWidget::updateThemeColors);
 
@@ -971,6 +975,68 @@ void TodoWidget::setupBlankContextMenu()
     m_showTimeAction->setCheckable(true);
     m_showTimeAction->setChecked(m_showCreateTime);
     connect(m_showTimeAction, &QAction::toggled, this, &TodoWidget::setShowCreateTime);
+
+    // ========== 主题切换子菜单 ==========
+    DMenu *themeMenu = new DMenu("主题", this);
+
+    QAction *lightAction = themeMenu->addAction("浅色主题");
+    lightAction->setCheckable(true);
+
+    QAction *darkAction = themeMenu->addAction("深色主题");
+    darkAction->setCheckable(true);
+
+    QAction *followAction = themeMenu->addAction("跟随系统");
+    followAction->setCheckable(true);
+
+    // 根据当前主题类型设置默认选中
+    auto currentType = DGuiApplicationHelper::instance()->themeType();
+    if (currentType == DGuiApplicationHelper::LightType) {
+        lightAction->setChecked(true);
+    } else if (currentType == DGuiApplicationHelper::DarkType) {
+        darkAction->setChecked(true);
+    } else {
+        followAction->setChecked(true);
+    }
+
+    connect(lightAction, &QAction::triggered, this, [this, lightAction, darkAction, followAction]() {
+        m_followSystemTheme = false;
+        lightAction->setChecked(true);
+        darkAction->setChecked(false);
+        followAction->setChecked(false);
+        DGuiApplicationHelper::instance()->setPaletteType(DGuiApplicationHelper::LightType);
+    });
+    connect(darkAction, &QAction::triggered, this, [this, lightAction, darkAction, followAction]() {
+        m_followSystemTheme = false;
+        lightAction->setChecked(false);
+        darkAction->setChecked(true);
+        followAction->setChecked(false);
+        DGuiApplicationHelper::instance()->setPaletteType(DGuiApplicationHelper::DarkType);
+    });
+    connect(followAction, &QAction::triggered, this, [this, lightAction, darkAction, followAction]() {
+        m_followSystemTheme = true;
+        lightAction->setChecked(false);
+        darkAction->setChecked(false);
+        followAction->setChecked(true);
+        DGuiApplicationHelper::instance()->setPaletteType(DGuiApplicationHelper::UnknownType);
+    });
+
+    m_blankContextMenu->addMenu(themeMenu);
+
+    // 跟随系统时，系统主题变化只更新实际主题，不改变勾选项
+    // 手动选择浅色/深色时，系统主题变化不覆盖用户选择
+    connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged,
+            this, [this, lightAction, darkAction, followAction]() {
+        if (m_followSystemTheme) {
+            // 跟随系统模式：只更新实际主题，保持"跟随系统"勾选
+            lightAction->blockSignals(true);
+            darkAction->blockSignals(true);
+            lightAction->setChecked(false);
+            darkAction->setChecked(false);
+            followAction->setChecked(true);
+            lightAction->blockSignals(false);
+            darkAction->blockSignals(false);
+        }
+    });
 
     // 分隔线
     m_blankContextMenu->addSeparator();

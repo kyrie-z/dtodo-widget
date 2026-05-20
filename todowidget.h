@@ -248,6 +248,7 @@ private:
     bool m_blurEnabled;                   ///< 是否启用背景模糊
     int m_maskAlpha;                    ///< 背景透明度
     bool m_showCreateTime;              ///< 是否显示创建时间
+    bool m_followSystemTheme;           ///< 是否跟随系统主题
 };
 
 #endif // TODOWIDGET_H
