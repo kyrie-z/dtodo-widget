@@ -55,7 +55,8 @@ TodoWidget::TodoWidget(QWidget *parent)
     setMaskColor(AutoColor);
 
     // 设置背景不透明度，增强模糊和透明效果
-    setMaskAlpha(m_maskAlpha);
+    // 注意：直接调用父类方法，避免触发列表项更新（此时m_model未初始化）
+    DBlurEffectWidget::setMaskAlpha(m_maskAlpha);
 
     // 初始化 UI
     setupUI();
@@ -631,7 +632,7 @@ void TodoWidget::updateThemeColors()
  */
 void TodoWidget::updateItemAppearance(int row)
 {
-    if (row < 0 || row >= m_model->rowCount()) return;
+    if (row < 0 || !m_model || row >= m_model->rowCount()) return;
 
     QStandardItem *item = m_model->item(row);
     if (!item) return;
@@ -653,6 +654,7 @@ void TodoWidget::updateItemAppearance(int row)
     item->setFont(font);
 
     // 设置前景色（已完成项使用次要文字颜色）
+    if (!m_listView) return;
     DPalette pa = DPaletteHelper::instance()->palette(m_listView);
     if (completed) {
         item->setForeground(pa.color(DPalette::PlaceholderText));
@@ -660,9 +662,11 @@ void TodoWidget::updateItemAppearance(int row)
         item->setForeground(pa.color(DPalette::Text));
     }
 
-    // 设置背景色
+    // 设置背景色 - 半透明背景，透明度跟随设置
     QColor bgColor = pa.color(DPalette::Base);
-    bgColor.setAlpha(200);
+    // 列表项透明度基于全局设置，但范围调整为10-100，让背景更透明
+    int itemAlpha = qBound(10, m_maskAlpha / 3, 100);
+    bgColor.setAlpha(itemAlpha);
     item->setBackground(bgColor);
 }
 
@@ -823,13 +827,20 @@ void TodoWidget::setBlurRadius(int radius)
  * @brief 设置背景透明度
  * @param alpha 透明度值 (0-255)
  *
- * 更新背景透明度并保存设置。
+ * 更新背景透明度并保存设置，同时更新列表项背景透明度。
  */
 void TodoWidget::setMaskAlpha(int alpha)
 {
     m_maskAlpha = alpha;
     DBlurEffectWidget::setMaskAlpha(alpha);
     saveBlurSettings();
+
+    // 更新所有列表项的背景透明度
+    if (m_model) {
+        for (int i = 0; i < m_model->rowCount(); ++i) {
+            updateItemAppearance(i);
+        }
+    }
 }
 
 /**
