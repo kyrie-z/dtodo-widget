@@ -60,6 +60,13 @@ protected:
      */
     bool eventFilter(QObject *watched, QEvent *event) override;
 
+    /**
+     * @brief 绘制事件
+     *
+     * 模糊关闭时手动绘制半透明背景。
+     */
+    void paintEvent(QPaintEvent *event) override;
+
 private Q_SLOTS:
     /** @brief 添加新的待办事项 */
     void addTodo();
@@ -113,10 +120,10 @@ private Q_SLOTS:
     void showBlankContextMenu(const QPoint &pos);
 
     /**
-     * @brief 设置模糊半径
-     * @param radius 模糊半径值
+     * @brief 切换背景模糊效果
+     * @param enabled 是否启用
      */
-    void setBlurRadius(int radius);
+    void setBlurEnabled(bool enabled);
 
     /**
      * @brief 设置背景透明度
@@ -211,6 +218,17 @@ private:
      */
     void setTodoColor(const QString &colorHex);
 
+    /**
+     * @brief 切换创建时间显示
+     * @param visible 是否显示
+     */
+    void setShowCreateTime(bool visible);
+
+    /**
+     * @brief 更新所有列表项的时间标签显示
+     */
+    void updateTimeLabels();
+
     DLineEdit *m_inputEdit;             ///< 输入框
     DListView *m_listView;              ///< 列表视图
     QStandardItemModel *m_model;        ///< 列表数据模型
@@ -221,13 +239,15 @@ private:
     DMenu *m_contextMenu;               ///< 列表项右键菜单
     DMenu *m_blankContextMenu;          ///< 空白区域右键菜单
     QAction *m_toggleAction;            ///< 切换完成状态的菜单项
+    QAction *m_showTimeAction;          ///< 显示创建时间的菜单项
     QModelIndex m_contextIndex;         ///< 右键菜单触发时的索引
     QList<TodoItem> m_todos;            ///< 待办事项数据列表
     int m_nextId;                       ///< 下一个待办事项 ID
     bool m_isEditing;                   ///< 是否正在编辑
     int m_hoveredRow;                   ///< 当前悬停的行号
-    int m_blurRadius;                   ///< 模糊半径
+    bool m_blurEnabled;                   ///< 是否启用背景模糊
     int m_maskAlpha;                    ///< 背景透明度
+    bool m_showCreateTime;              ///< 是否显示创建时间
 };
 
 #endif // TODOWIDGET_H

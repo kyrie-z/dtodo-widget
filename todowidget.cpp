@@ -54,8 +54,9 @@ TodoWidget::TodoWidget(QWidget *parent)
     , m_blankContextMenu(nullptr)
     , m_isEditing(false)
     , m_hoveredRow(-1)
-    , m_blurRadius(40)
+    , m_blurEnabled(true)
     , m_maskAlpha(180)
+    , m_showCreateTime(false)
 {
     // 加载模糊效果设置
     loadBlurSettings();
@@ -63,7 +64,7 @@ TodoWidget::TodoWidget(QWidget *parent)
     // 设置模糊特效 - 符合 DTK 设计规范的毛玻璃效果
     setMode(DBlurEffectWidget::GaussianBlur);
     setBlendMode(DBlurEffectWidget::BehindWindowBlend);
-    setRadius(m_blurRadius);            // 模糊半径
+    setRadius(40);
     setBlurRectXRadius(12);             // 圆角 X 半径
     setBlurRectYRadius(12);             // 圆角 Y 半径
 
@@ -74,6 +75,7 @@ TodoWidget::TodoWidget(QWidget *parent)
     // 设置背景不透明度，增强模糊和透明效果
     // 注意：直接调用父类方法，避免触发列表项更新（此时m_model未初始化）
     DBlurEffectWidget::setMaskAlpha(m_maskAlpha);
+    DBlurEffectWidget::setBlurEnabled(m_blurEnabled);
 
     // 初始化 UI
     setupUI();
@@ -255,6 +257,21 @@ void TodoWidget::setupUI()
     updateEmptyState();
 }
 
+void TodoWidget::paintEvent(QPaintEvent *event)
+{
+    if (!m_blurEnabled) {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        DPalette pa = DPaletteHelper::instance()->palette(this);
+        QColor bgColor = pa.color(DPalette::Window);
+        bgColor.setAlpha(m_maskAlpha);
+        painter.setBrush(bgColor);
+        painter.setPen(Qt::NoPen);
+        painter.drawRoundedRect(rect(), 12, 12);
+    }
+    DBlurEffectWidget::paintEvent(event);
+}
+
 /**
  * @brief 事件过滤器 - 处理列表项悬停事件和右键菜单事件
  *
@@ -418,10 +435,26 @@ QIcon TodoWidget::createColorDotIcon(const QColor &color, int size) const
  * @brief 为列表项设置操作按钮
  *
  * 在列表项右侧添加完成和删除按钮，初始状态为隐藏。
+ * 在列表项左侧添加创建时间标签。
  */
 void TodoWidget::setupItemActions(DStandardItem *item, int todoId, bool completed)
 {
-    // 完成按钮 - 创建深色勾选图标
+    // 查找创建时间
+    QDateTime createdAt;
+    for (const auto &todo : m_todos) {
+        if (todo.id() == todoId) {
+            createdAt = todo.createdAt();
+            break;
+        }
+    }
+
+    // 左侧创建时间标签
+    DViewItemAction *timeAction = new DViewItemAction(Qt::AlignVCenter, QSize(), QSize(), false);
+    timeAction->setText(createdAt.toString("MM-dd"));
+    timeAction->setVisible(m_showCreateTime);
+    item->setActionList(Qt::Edge::LeftEdge, {timeAction});
+
+    // 右侧完成按钮 - 创建深色勾选图标
     DViewItemAction *completeAction = new DViewItemAction(Qt::AlignVCenter, QSize(24, 24), QSize(24, 24), true);
     completeAction->setIcon(createCheckIcon(completed));
     completeAction->setToolTip("标记完成");
@@ -889,40 +922,11 @@ void TodoWidget::setupBlankContextMenu()
 {
     m_blankContextMenu = new DMenu(this);
 
-    // ========== 模糊半径滑块 ==========
-    // 创建模糊半径标签
-    QWidget *radiusLabelWidget = new QWidget();
-    QHBoxLayout *radiusLabelLayout = new QHBoxLayout(radiusLabelWidget);
-    radiusLabelLayout->setContentsMargins(10, 5, 10, 0);
-    DLabel *radiusLabel = new DLabel("模糊半径");
-    radiusLabelLayout->addWidget(radiusLabel);
-    radiusLabelLayout->addStretch();
-
-    QWidgetAction *radiusLabelAction = new QWidgetAction(m_blankContextMenu);
-    radiusLabelAction->setDefaultWidget(radiusLabelWidget);
-    m_blankContextMenu->addAction(radiusLabelAction);
-
-    // 创建模糊半径滑块容器（居中）
-    QWidget *radiusWidget = new QWidget();
-    QHBoxLayout *radiusLayout = new QHBoxLayout(radiusWidget);
-    radiusLayout->setContentsMargins(0, 0, 0, 0);
-    radiusLayout->addStretch();
-
-    DSlider *radiusSlider = new DSlider(Qt::Horizontal);
-    radiusSlider->setMinimum(10);
-    radiusSlider->setMaximum(100);
-    radiusSlider->setValue(m_blurRadius);
-    radiusSlider->setFixedWidth(150);
-    radiusLayout->addWidget(radiusSlider);
-
-    radiusLayout->addStretch();
-
-    QWidgetAction *radiusAction = new QWidgetAction(m_blankContextMenu);
-    radiusAction->setDefaultWidget(radiusWidget);
-    m_blankContextMenu->addAction(radiusAction);
-
-    // 连接滑块信号
-    connect(radiusSlider, &DSlider::valueChanged, this, &TodoWidget::setBlurRadius);
+    // ========== 背景模糊开关 ==========
+    QAction *blurAction = m_blankContextMenu->addAction("背景模糊");
+    blurAction->setCheckable(true);
+    blurAction->setChecked(m_blurEnabled);
+    connect(blurAction, &QAction::toggled, this, &TodoWidget::setBlurEnabled);
 
     // ========== 透明度滑块 ==========
     // 创建透明度标签
@@ -962,6 +966,15 @@ void TodoWidget::setupBlankContextMenu()
     // 分隔线
     m_blankContextMenu->addSeparator();
 
+    // ========== 显示创建时间选项 ==========
+    m_showTimeAction = m_blankContextMenu->addAction("显示创建时间");
+    m_showTimeAction->setCheckable(true);
+    m_showTimeAction->setChecked(m_showCreateTime);
+    connect(m_showTimeAction, &QAction::toggled, this, &TodoWidget::setShowCreateTime);
+
+    // 分隔线
+    m_blankContextMenu->addSeparator();
+
     // ========== 关闭选项 ==========
     QAction *closeAction = m_blankContextMenu->addAction("关闭");
     connect(closeAction, &QAction::triggered, this, &TodoWidget::closeWindow);
@@ -990,10 +1003,15 @@ void TodoWidget::showBlankContextMenu(const QPoint &pos)
  *
  * 更新模糊效果并保存设置。
  */
-void TodoWidget::setBlurRadius(int radius)
+void TodoWidget::setBlurEnabled(bool enabled)
 {
-    m_blurRadius = radius;
-    setRadius(radius);
+    m_blurEnabled = enabled;
+    DBlurEffectWidget::setBlurEnabled(enabled);
+    if (enabled) {
+        setMaskColor(AutoColor);
+        DBlurEffectWidget::setMaskAlpha(m_maskAlpha);
+    }
+    update();
     saveBlurSettings();
 }
 
@@ -1006,7 +1024,10 @@ void TodoWidget::setBlurRadius(int radius)
 void TodoWidget::setMaskAlpha(int alpha)
 {
     m_maskAlpha = alpha;
-    DBlurEffectWidget::setMaskAlpha(alpha);
+    if (m_blurEnabled) {
+        DBlurEffectWidget::setMaskAlpha(alpha);
+    }
+    update();
     saveBlurSettings();
 
     // 更新所有列表项的背景透明度
@@ -1059,6 +1080,38 @@ void TodoWidget::setTodoColor(const QString &colorHex)
 }
 
 /**
+ * @brief 切换创建时间显示
+ * @param visible 是否显示
+ *
+ * 更新所有列表项的时间标签可见性并保存设置。
+ */
+void TodoWidget::setShowCreateTime(bool visible)
+{
+    m_showCreateTime = visible;
+    updateTimeLabels();
+    saveBlurSettings();
+}
+
+/**
+ * @brief 更新所有列表项的时间标签显示
+ */
+void TodoWidget::updateTimeLabels()
+{
+    if (!m_model) return;
+
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        DStandardItem *item = dynamic_cast<DStandardItem *>(m_model->item(i));
+        if (!item) continue;
+
+        DViewItemActionList leftActions = item->actionList(Qt::LeftEdge);
+        for (auto *action : leftActions) {
+            action->setVisible(m_showCreateTime);
+        }
+        m_listView->update(m_model->index(i, 0));
+    }
+}
+
+/**
  * @brief 保存模糊效果设置
  *
  * 将模糊半径和透明度设置保存到配置文件。
@@ -1066,8 +1119,9 @@ void TodoWidget::setTodoColor(const QString &colorHex)
 void TodoWidget::saveBlurSettings()
 {
     QSettings settings("dtodo-widget", "blur");
-    settings.setValue("radius", m_blurRadius);
+    settings.setValue("blurEnabled", m_blurEnabled);
     settings.setValue("alpha", m_maskAlpha);
+    settings.setValue("showCreateTime", m_showCreateTime);
 }
 
 /**
@@ -1078,10 +1132,10 @@ void TodoWidget::saveBlurSettings()
 void TodoWidget::loadBlurSettings()
 {
     QSettings settings("dtodo-widget", "blur");
-    m_blurRadius = settings.value("radius", 40).toInt();
+    m_blurEnabled = settings.value("blurEnabled", true).toBool();
     m_maskAlpha = settings.value("alpha", 180).toInt();
+    m_showCreateTime = settings.value("showCreateTime", false).toBool();
 
     // 限制范围
-    m_blurRadius = qBound(10, m_blurRadius, 100);
     m_maskAlpha = qBound(50, m_maskAlpha, 255);
 }
