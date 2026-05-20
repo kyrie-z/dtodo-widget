@@ -16,6 +16,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 #include <QWidgetAction>
+#include <QPainter>
 #include <DPalette>
 #include <DGuiApplicationHelper>
 #include <DPaletteHelper>
@@ -164,7 +165,7 @@ void TodoWidget::setupUI()
     // ========== 右键菜单 ==========
     m_contextMenu = new DMenu(this);
     QAction *editAction = m_contextMenu->addAction("编辑");
-    QAction *toggleAction = m_contextMenu->addAction("切换完成状态");
+    m_toggleAction = m_contextMenu->addAction("切换完成状态");
     QAction *deleteAction = m_contextMenu->addAction("删除");
 
     // ========== 连接信号 ==========
@@ -196,7 +197,7 @@ void TodoWidget::setupUI()
             m_listView->edit(m_contextIndex);
         }
     });
-    connect(toggleAction, &QAction::triggered, this, [this]() {
+    connect(m_toggleAction, &QAction::triggered, this, [this]() {
         if (m_contextIndex.isValid()) {
             toggleCompleted(m_contextIndex);
         }
@@ -311,20 +312,59 @@ void TodoWidget::addTodo()
 }
 
 /**
+ * @brief 创建勾选图标
+ * @param completed 是否已完成
+ * @return 勾选图标
+ *
+ * 根据完成状态和主题创建不同颜色的勾选图标。
+ */
+QIcon TodoWidget::createCheckIcon(bool completed)
+{
+    QPixmap checkPixmap(24, 24);
+    checkPixmap.fill(Qt::transparent);
+    QPainter painter(&checkPixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // 根据主题和完成状态选择颜色
+    bool isDarkTheme = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
+
+    QColor checkColor;
+    if (completed) {
+        // 完成状态：颜色变浅
+        checkColor = isDarkTheme ? QColor(120, 120, 120) : QColor(180, 180, 180);
+    } else {
+        // 未完成状态：颜色加深
+        checkColor = isDarkTheme ? QColor(220, 220, 220) : QColor(0, 0, 0);  // 浅色主题用黑色
+    }
+
+    painter.setPen(QPen(checkColor, 2.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+
+    // 绘制勾选符号
+    QPainterPath checkPath;
+    checkPath.moveTo(5, 12);
+    checkPath.lineTo(9, 16);
+    checkPath.lineTo(18, 6);
+    painter.drawPath(checkPath);
+
+    painter.end();
+    return QIcon(checkPixmap);
+}
+
+/**
  * @brief 为列表项设置操作按钮
  *
  * 在列表项右侧添加完成和删除按钮，初始状态为隐藏。
  */
-void TodoWidget::setupItemActions(DStandardItem *item, int todoId)
+void TodoWidget::setupItemActions(DStandardItem *item, int todoId, bool completed)
 {
-    // 完成按钮
-    DViewItemAction *completeAction = new DViewItemAction(Qt::AlignVCenter, QSize(20, 20), QSize(20, 20), true);
-    completeAction->setIcon(QIcon::fromTheme("dialog-ok"));
+    // 完成按钮 - 创建深色勾选图标
+    DViewItemAction *completeAction = new DViewItemAction(Qt::AlignVCenter, QSize(24, 24), QSize(24, 24), true);
+    completeAction->setIcon(createCheckIcon(completed));
     completeAction->setToolTip("标记完成");
     completeAction->setVisible(false);  // 初始隐藏
 
     // 删除按钮
-    DViewItemAction *deleteAction = new DViewItemAction(Qt::AlignVCenter, QSize(20, 20), QSize(20, 20), true);
+    DViewItemAction *deleteAction = new DViewItemAction(Qt::AlignVCenter, QSize(24, 24), QSize(24, 24), true);
     deleteAction->setIcon(QIcon::fromTheme("edit-delete"));
     deleteAction->setToolTip("删除");
     deleteAction->setVisible(false);    // 初始隐藏
@@ -340,6 +380,27 @@ void TodoWidget::setupItemActions(DStandardItem *item, int todoId)
 
     // 设置到列表项右侧
     item->setActionList(Qt::Edge::RightEdge, {completeAction, deleteAction});
+}
+
+/**
+ * @brief 更新操作按钮图标颜色
+ * @param row 行号
+ * @param completed 是否已完成
+ */
+void TodoWidget::updateActionIconColor(int row, bool completed)
+{
+    if (row < 0 || row >= m_model->rowCount()) return;
+
+    DStandardItem *item = dynamic_cast<DStandardItem *>(m_model->item(row));
+    if (!item) return;
+
+    DViewItemActionList actions = item->actionList(Qt::RightEdge);
+    if (actions.size() > 0) {
+        actions[0]->setIcon(createCheckIcon(completed));
+    }
+
+    // 刷新显示
+    m_listView->update(m_model->index(row, 0));
 }
 
 /**
@@ -376,6 +437,7 @@ void TodoWidget::toggleCompletedById(int todoId)
                 QStandardItem *item = m_model->item(row);
                 if (item && item->data(Qt::UserRole).toInt() == todoId) {
                     updateItemAppearance(row);
+                    updateActionIconColor(row, completed);  // 更新图标颜色
                     break;
                 }
             }
@@ -454,6 +516,7 @@ void TodoWidget::onReturnPressed()
  * @param pos 鼠标位置（相对于列表视图）
  *
  * 点击列表项时显示列表项菜单，点击空白区域时显示设置菜单。
+ * 根据列表项的完成状态动态显示"切换完成状态"或"切换未完成状态"。
  */
 void TodoWidget::showContextMenu(const QPoint &pos)
 {
@@ -461,6 +524,21 @@ void TodoWidget::showContextMenu(const QPoint &pos)
     if (index.isValid()) {
         // 点击的是列表项，显示列表项菜单
         m_contextIndex = index;
+
+        // 根据完成状态动态设置菜单文字
+        QStandardItem *item = m_model->item(index.row());
+        if (item) {
+            int todoId = item->data(Qt::UserRole).toInt();
+            bool completed = false;
+            for (const auto &todo : m_todos) {
+                if (todo.id() == todoId) {
+                    completed = todo.completed();
+                    break;
+                }
+            }
+            m_toggleAction->setText(completed ? "切换未完成状态" : "切换完成状态");
+        }
+
         m_contextMenu->exec(m_listView->viewport()->mapToGlobal(pos));
     } else {
         // 点击的是列表区域的空白部分，显示设置菜单
@@ -589,8 +667,8 @@ void TodoWidget::loadTodos()
             modelItem->setDropEnabled(false);
             modelItem->setData(item.id(), Qt::UserRole);
 
-            // 设置操作按钮（初始隐藏）
-            setupItemActions(modelItem, item.id());
+            // 设置操作按钮（初始隐藏，传入完成状态）
+            setupItemActions(modelItem, item.id(), item.completed());
 
             m_model->appendRow(modelItem);
 
@@ -621,6 +699,17 @@ void TodoWidget::updateThemeColors()
     if (m_model && m_listView) {
         for (int i = 0; i < m_model->rowCount(); ++i) {
             updateItemAppearance(i);
+            // 更新图标颜色
+            QStandardItem *item = m_model->item(i);
+            if (item) {
+                int todoId = item->data(Qt::UserRole).toInt();
+                for (const auto &todo : m_todos) {
+                    if (todo.id() == todoId) {
+                        updateActionIconColor(i, todo.completed());
+                        break;
+                    }
+                }
+            }
         }
     }
 }
@@ -653,13 +742,16 @@ void TodoWidget::updateItemAppearance(int row)
     font.setStrikeOut(completed);
     item->setFont(font);
 
-    // 设置前景色（已完成项使用次要文字颜色）
+    // 设置前景色（直接设置颜色值，确保清晰可见）
     if (!m_listView) return;
     DPalette pa = DPaletteHelper::instance()->palette(m_listView);
     if (completed) {
         item->setForeground(pa.color(DPalette::PlaceholderText));
     } else {
-        item->setForeground(pa.color(DPalette::Text));
+        // 根据主题直接设置深色文字
+        bool isDarkTheme = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
+        QColor textColor = isDarkTheme ? QColor(220, 220, 220) : QColor(30, 30, 30);
+        item->setForeground(textColor);
     }
 
     // 设置背景色 - 半透明背景，透明度跟随设置

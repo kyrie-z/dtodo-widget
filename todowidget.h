@@ -154,10 +154,25 @@ private:
      * @brief 为列表项设置操作按钮
      * @param item 列表项
      * @param todoId 待办事项 ID
+     * @param completed 是否已完成
      *
      * 在列表项右侧添加完成和删除按钮。
      */
-    void setupItemActions(DStandardItem *item, int todoId);
+    void setupItemActions(DStandardItem *item, int todoId, bool completed = false);
+
+    /**
+     * @brief 更新操作按钮图标颜色
+     * @param row 行号
+     * @param completed 是否已完成
+     */
+    void updateActionIconColor(int row, bool completed);
+
+    /**
+     * @brief 创建勾选图标
+     * @param completed 是否已完成
+     * @return 勾选图标
+     */
+    QIcon createCheckIcon(bool completed);
 
     /**
      * @brief 设置列表项操作按钮的可见性
@@ -190,6 +205,7 @@ private:
     QWidget *m_listContainer;           ///< 列表容器
     DMenu *m_contextMenu;               ///< 列表项右键菜单
     DMenu *m_blankContextMenu;          ///< 空白区域右键菜单
+    QAction *m_toggleAction;            ///< 切换完成状态的菜单项
     QModelIndex m_contextIndex;         ///< 右键菜单触发时的索引
     QList<TodoItem> m_todos;            ///< 待办事项数据列表
     int m_nextId;                       ///< 下一个待办事项 ID
