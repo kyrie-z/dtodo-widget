@@ -26,3 +26,7 @@ void TodoItem::setCreatedAt(const QDateTime &createdAt) { m_createdAt = createdA
 
 int TodoItem::id() const { return m_id; }
 void TodoItem::setId(int id) { m_id = id; }
+
+QString TodoItem::color() const { return m_color; }
+void TodoItem::setColor(const QString &color) { m_color = color; }
+bool TodoItem::hasColor() const { return !m_color.isEmpty(); }

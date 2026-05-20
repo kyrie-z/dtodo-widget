@@ -27,6 +27,22 @@
 DWIDGET_USE_NAMESPACE
 
 /**
+ * @brief 预设颜色列表
+ *
+ * 定义可用的颜色标记颜色：红、橙、黄、绿、蓝、紫、粉、灰
+ */
+static const QList<QPair<QString, QString>> PRESET_COLORS = {
+    {QObject::tr("红色"), "#e53935"},
+    {QObject::tr("橙色"), "#fb8c00"},
+    {QObject::tr("黄色"), "#fdd835"},
+    {QObject::tr("绿色"), "#43a047"},
+    {QObject::tr("蓝色"), "#1e88e5"},
+    {QObject::tr("紫色"), "#8e24aa"},
+    {QObject::tr("粉色"), "#d81b60"},
+    {QObject::tr("灰色"), "#757575"},
+};
+
+/**
  * @brief 构造函数实现
  *
  * 初始化毛玻璃效果、UI 界面、加载已保存的数据。
@@ -167,6 +183,29 @@ void TodoWidget::setupUI()
     QAction *editAction = m_contextMenu->addAction("编辑");
     m_toggleAction = m_contextMenu->addAction("切换完成状态");
     QAction *deleteAction = m_contextMenu->addAction("删除");
+
+    // 颜色标记子菜单
+    m_contextMenu->addSeparator();
+    DMenu *colorMenu = new DMenu("设置颜色", this);
+
+    // "无颜色"选项
+    QAction *noColorAction = colorMenu->addAction("无颜色");
+    connect(noColorAction, &QAction::triggered, this, [this]() {
+        setTodoColor(QString());
+    });
+
+    colorMenu->addSeparator();
+
+    // 预设颜色选项
+    for (const auto &preset : PRESET_COLORS) {
+        QAction *colorAction = colorMenu->addAction(
+            createColorDotIcon(QColor(preset.second), 12), preset.first);
+        connect(colorAction, &QAction::triggered, this, [this, preset]() {
+            setTodoColor(preset.second);
+        });
+    }
+
+    m_contextMenu->addMenu(colorMenu);
 
     // ========== 连接信号 ==========
     connect(addBtn, &DPushButton::clicked, this, &TodoWidget::addTodo);
@@ -348,6 +387,31 @@ QIcon TodoWidget::createCheckIcon(bool completed)
 
     painter.end();
     return QIcon(checkPixmap);
+}
+
+/**
+ * @brief 创建颜色圆点图标
+ * @param color 颜色
+ * @param size 图标大小
+ * @return 颜色圆点图标
+ *
+ * 绘制一个实心圆点作为颜色标记。
+ */
+QIcon TodoWidget::createColorDotIcon(const QColor &color, int size) const
+{
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // 绘制实心圆
+    painter.setBrush(QBrush(color));
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(QPointF(size / 2.0, size / 2.0), size / 2.0 - 1, size / 2.0 - 1);
+
+    painter.end();
+    return QIcon(pixmap);
 }
 
 /**
@@ -610,6 +674,7 @@ void TodoWidget::saveTodos()
             obj["text"] = item.text();
             obj["completed"] = item.completed();
             obj["createdAt"] = item.createdAt().toString(Qt::ISODate);
+            obj["color"] = item.color();  // 保存颜色标记
             array.append(obj);
         }
         QJsonDocument doc(array);
@@ -654,6 +719,13 @@ void TodoWidget::loadTodos()
             item.setId(obj["id"].toInt());
             item.setCompleted(obj["completed"].toBool());
             item.setCreatedAt(QDateTime::fromString(obj["createdAt"].toString(), Qt::ISODate));
+
+            // 加载颜色标记，验证颜色有效性
+            QString colorStr = obj["color"].toString();
+            if (!colorStr.isEmpty() && QColor::isValidColorName(colorStr)) {
+                item.setColor(colorStr);
+            }
+
             m_todos.append(item);
 
             if (item.id() >= m_nextId) {
@@ -718,6 +790,7 @@ void TodoWidget::updateThemeColors()
  * @brief 更新列表项外观
  *
  * 根据完成状态设置文字样式：已完成项显示删除线并使用次要文字颜色。
+ * 根据颜色标记设置图标。
  */
 void TodoWidget::updateItemAppearance(int row)
 {
@@ -728,13 +801,22 @@ void TodoWidget::updateItemAppearance(int row)
 
     int todoId = item->data(Qt::UserRole).toInt();
 
-    // 查找对应的待办事项获取完成状态
+    // 查找对应的待办事项获取完成状态和颜色
     bool completed = false;
+    QString todoColor;
     for (const auto &todo : m_todos) {
         if (todo.id() == todoId) {
             completed = todo.completed();
+            todoColor = todo.color();
             break;
         }
+    }
+
+    // 设置颜色标记图标
+    if (!todoColor.isEmpty() && QColor::isValidColorName(todoColor)) {
+        item->setIcon(createColorDotIcon(QColor(todoColor)));
+    } else {
+        item->setIcon(QIcon());  // 无颜色时清除图标
     }
 
     // 设置字体样式（已完成项显示删除线）
@@ -757,7 +839,7 @@ void TodoWidget::updateItemAppearance(int row)
     // 设置背景色 - 半透明背景，透明度跟随设置
     QColor bgColor = pa.color(DPalette::Base);
     // 列表项透明度基于全局设置，但范围调整为10-100，让背景更透明
-    int itemAlpha = qBound(10, m_maskAlpha / 3, 100);
+    int itemAlpha = qBound(10, m_maskAlpha / 2, 100);
     bgColor.setAlpha(itemAlpha);
     item->setBackground(bgColor);
 }
@@ -947,6 +1029,33 @@ void TodoWidget::closeWindow()
     if (parent) {
         parent->close();
     }
+}
+
+/**
+ * @brief 设置待办事项的颜色标记
+ * @param colorHex 颜色十六进制值，空字符串表示无颜色
+ *
+ * 更新待办事项的颜色标记并刷新显示。
+ */
+void TodoWidget::setTodoColor(const QString &colorHex)
+{
+    if (!m_contextIndex.isValid()) return;
+
+    int todoId = m_contextIndex.data(Qt::UserRole).toInt();
+
+    // 查找并更新待办事项的颜色
+    for (auto &todo : m_todos) {
+        if (todo.id() == todoId) {
+            todo.setColor(colorHex);
+            break;
+        }
+    }
+
+    // 更新显示
+    updateItemAppearance(m_contextIndex.row());
+
+    // 保存数据
+    saveTodos();
 }
 
 /**

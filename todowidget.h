@@ -21,6 +21,7 @@
 #include <QStandardItemModel>
 #include <QStackedWidget>
 #include <QSlider>
+#include <QPair>
 
 #include "todoitem.h"
 
@@ -195,6 +196,20 @@ private:
      * @brief 加载模糊效果设置
      */
     void loadBlurSettings();
+
+    /**
+     * @brief 创建颜色圆点图标
+     * @param color 颜色
+     * @param size 图标大小
+     * @return 颜色圆点图标
+     */
+    QIcon createColorDotIcon(const QColor &color, int size = 10) const;
+
+    /**
+     * @brief 设置待办事项的颜色标记
+     * @param colorHex 颜色十六进制值，空字符串表示无颜色
+     */
+    void setTodoColor(const QString &colorHex);
 
     DLineEdit *m_inputEdit;             ///< 输入框
     DListView *m_listView;              ///< 列表视图
