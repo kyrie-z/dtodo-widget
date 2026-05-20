@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file>icons/dtodo-widget.svg</file>
+  </qresource>
+</RCC>

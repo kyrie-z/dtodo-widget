@@ -289,8 +289,8 @@ int main(int argc, char *argv[])
     a.setProductName("dtodo-widget");
     a.setApplicationName("dtodo-widget");
     a.setApplicationVersion("1.0.0");
-    a.setProductIcon(QIcon::fromTheme("preferences-system"));
-    a.setWindowIcon(QIcon::fromTheme("preferences-system"));
+    a.setProductIcon(QIcon(":/icons/dtodo-widget.svg"));
+    a.setWindowIcon(QIcon(":/icons/dtodo-widget.svg"));
 
     DesktopWidget w;
     w.setWindowTitle("Todo 小组件");

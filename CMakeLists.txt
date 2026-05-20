@@ -20,6 +20,7 @@ add_executable(dtodo-widget
     todowidget.h
     todoitem.cpp
     todoitem.h
+    resources.qrc
 )
 
 target_link_libraries(dtodo-widget PRIVATE
