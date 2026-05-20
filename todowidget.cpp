@@ -227,8 +227,8 @@ void TodoWidget::setupUI()
         }
     });
 
-    // 拖拽完成后保存数据
-    connect(m_model, &QStandardItemModel::rowsMoved, this, [this]() {
+    // 拖拽排序后保存数据（InternalMove 使用 remove+insert，不触发 rowsMoved）
+    connect(m_model, &QStandardItemModel::rowsRemoved, this, [this]() {
         saveTodos();
     });
 

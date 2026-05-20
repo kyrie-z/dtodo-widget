@@ -37,3 +37,8 @@ target_include_directories(dtodo-widget PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${X11_INCLUDE_DIR}
 )
+
+# Install rules
+install(TARGETS dtodo-widget RUNTIME DESTINATION bin)
+install(FILES dtodo-widget.desktop DESTINATION share/applications)
+install(FILES icons/dtodo-widget.svg DESTINATION share/icons/hicolor/scalable/apps)

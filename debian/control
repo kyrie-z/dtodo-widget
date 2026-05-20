@@ -1,0 +1,14 @@
+Source: dtodo-widget
+Section: utils
+Priority: optional
+Maintainer: zhouzilong <zhouzilong@proton.me>
+Build-Depends: cmake, debhelper-compat (= 10), qt6-base-dev, libdtk6core-dev, libdtk6gui-dev, libdtk6widget-dev, libx11-dev
+Standards-Version: 4.5.0
+
+Package: dtodo-widget
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Desktop todo widget with frosted glass effect
+ A lightweight desktop todo widget built with DTK6 and Qt6.
+ It features a frosted glass blur effect, color markers,
+ and creation time display for todo items.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DTodo Widget
+Name[zh_CN]=DTodo 待办小组件
+Comment=Desktop todo widget with frosted glass effect
+Comment[zh_CN]=桌面待办事项小组件
+Exec=dtodo-widget
+Icon=dtodo-widget
+Categories=Utility;
+StartupNotify=false
