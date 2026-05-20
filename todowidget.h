@@ -20,6 +20,7 @@
 #include <DStyledItemDelegate>
 #include <QStandardItemModel>
 #include <QStackedWidget>
+#include <QSlider>
 
 #include "todoitem.h"
 
@@ -104,6 +105,27 @@ private Q_SLOTS:
      */
     void onDoubleClicked(const QModelIndex &index);
 
+    /**
+     * @brief 显示空白区域右键菜单
+     * @param pos 鼠标位置
+     */
+    void showBlankContextMenu(const QPoint &pos);
+
+    /**
+     * @brief 设置模糊半径
+     * @param radius 模糊半径值
+     */
+    void setBlurRadius(int radius);
+
+    /**
+     * @brief 设置背景透明度
+     * @param alpha 透明度值 (0-255)
+     */
+    void setMaskAlpha(int alpha);
+
+    /** @brief 关闭窗口 */
+    void closeWindow();
+
 private:
     /** @brief 初始化用户界面 */
     void setupUI();
@@ -144,6 +166,21 @@ private:
      */
     void setActionsVisible(int row, bool visible);
 
+    /**
+     * @brief 初始化空白区域右键菜单
+     */
+    void setupBlankContextMenu();
+
+    /**
+     * @brief 保存模糊效果设置
+     */
+    void saveBlurSettings();
+
+    /**
+     * @brief 加载模糊效果设置
+     */
+    void loadBlurSettings();
+
     DLineEdit *m_inputEdit;             ///< 输入框
     DListView *m_listView;              ///< 列表视图
     QStandardItemModel *m_model;        ///< 列表数据模型
@@ -151,12 +188,15 @@ private:
     DLabel *m_emptyLabel;               ///< 空状态提示标签
     QStackedWidget *m_stackWidget;      ///< 堆栈窗口（用于切换空态/列表态）
     QWidget *m_listContainer;           ///< 列表容器
-    DMenu *m_contextMenu;               ///< 右键菜单
+    DMenu *m_contextMenu;               ///< 列表项右键菜单
+    DMenu *m_blankContextMenu;          ///< 空白区域右键菜单
     QModelIndex m_contextIndex;         ///< 右键菜单触发时的索引
     QList<TodoItem> m_todos;            ///< 待办事项数据列表
     int m_nextId;                       ///< 下一个待办事项 ID
     bool m_isEditing;                   ///< 是否正在编辑
     int m_hoveredRow;                   ///< 当前悬停的行号
+    int m_blurRadius;                   ///< 模糊半径
+    int m_maskAlpha;                    ///< 背景透明度
 };
 
 #endif // TODOWIDGET_H

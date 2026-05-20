@@ -14,10 +14,12 @@
 #include <QDir>
 #include <QTimer>
 #include <QMouseEvent>
+#include <QSettings>
 #include <DPalette>
 #include <DGuiApplicationHelper>
 #include <DPaletteHelper>
 #include <DStyle>
+#include <DMainWindow>
 
 DWIDGET_USE_NAMESPACE
 
@@ -30,13 +32,19 @@ TodoWidget::TodoWidget(QWidget *parent)
     : DBlurEffectWidget(parent)
     , m_nextId(1)
     , m_contextMenu(nullptr)
+    , m_blankContextMenu(nullptr)
     , m_isEditing(false)
     , m_hoveredRow(-1)
+    , m_blurRadius(40)
+    , m_maskAlpha(180)
 {
+    // 加载模糊效果设置
+    loadBlurSettings();
+
     // 设置模糊特效 - 符合 DTK 设计规范的毛玻璃效果
     setMode(DBlurEffectWidget::GaussianBlur);
     setBlendMode(DBlurEffectWidget::BehindWindowBlend);
-    setRadius(40);                      // 模糊半径
+    setRadius(m_blurRadius);            // 模糊半径
     setBlurRectXRadius(12);             // 圆角 X 半径
     setBlurRectYRadius(12);             // 圆角 Y 半径
 
@@ -45,10 +53,13 @@ TodoWidget::TodoWidget(QWidget *parent)
     setMaskColor(AutoColor);
 
     // 设置背景不透明度，增强模糊和透明效果
-    setMaskAlpha(180);
+    setMaskAlpha(m_maskAlpha);
 
     // 初始化 UI
     setupUI();
+
+    // 初始化空白区域右键菜单
+    setupBlankContextMenu();
 
     // 加载已保存的待办事项
     loadTodos();
@@ -193,15 +204,20 @@ void TodoWidget::setupUI()
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged,
             this, &TodoWidget::updateThemeColors);
 
+    // 为其他控件安装事件过滤器以处理右键菜单
+    m_countLabel->installEventFilter(this);
+    m_stackWidget->installEventFilter(this);
+
     updateCountLabel();
     updateEmptyState();
 }
 
 /**
- * @brief 事件过滤器 - 处理列表项悬停事件
+ * @brief 事件过滤器 - 处理列表项悬停事件和右键菜单事件
  *
  * 当鼠标进入某个列表项时，显示该行的操作按钮；
  * 当鼠标离开时，隐藏操作按钮。
+ * 处理空白区域的右键菜单事件（不影响列表项的右键菜单）。
  */
 bool TodoWidget::eventFilter(QObject *watched, QEvent *event)
 {
@@ -233,6 +249,25 @@ bool TodoWidget::eventFilter(QObject *watched, QEvent *event)
             m_hoveredRow = -1;
         }
     }
+
+    // 处理其他空白区域的右键菜单事件（不影响输入框和列表项）
+    if (event->type() == QEvent::ContextMenu) {
+        // 检查是否来自输入框或其内部控件
+        if (watched == m_inputEdit || watched == m_inputEdit->lineEdit()) {
+            return DBlurEffectWidget::eventFilter(watched, event);  // 不处理，保持默认行为
+        }
+
+        // 检查是否来自列表视图的viewport（列表项菜单已在showContextMenu中处理）
+        if (watched == m_listView->viewport()) {
+            return DBlurEffectWidget::eventFilter(watched, event);  // 不处理，保持默认行为
+        }
+
+        // 其他区域显示设置菜单
+        QContextMenuEvent *contextEvent = static_cast<QContextMenuEvent *>(event);
+        m_blankContextMenu->exec(contextEvent->globalPos());
+        return true;  // 事件已处理
+    }
+
     return DBlurEffectWidget::eventFilter(watched, event);
 }
 
@@ -413,13 +448,20 @@ void TodoWidget::onReturnPressed()
 
 /**
  * @brief 显示右键上下文菜单
+ * @param pos 鼠标位置（相对于列表视图）
+ *
+ * 点击列表项时显示列表项菜单，点击空白区域时显示设置菜单。
  */
 void TodoWidget::showContextMenu(const QPoint &pos)
 {
     QModelIndex index = m_listView->indexAt(pos);
     if (index.isValid()) {
+        // 点击的是列表项，显示列表项菜单
         m_contextIndex = index;
         m_contextMenu->exec(m_listView->viewport()->mapToGlobal(pos));
+    } else {
+        // 点击的是列表区域的空白部分，显示设置菜单
+        m_blankContextMenu->exec(m_listView->viewport()->mapToGlobal(pos));
     }
 }
 
@@ -655,4 +697,188 @@ void TodoWidget::onDoubleClicked(const QModelIndex &index)
     m_isEditing = true;
     m_listView->edit(index);
     QTimer::singleShot(100, this, [this]() { m_isEditing = false; });
+}
+
+/**
+ * @brief 初始化空白区域右键菜单
+ *
+ * 创建包含模糊效果设置和关闭选项的右键菜单。
+ */
+void TodoWidget::setupBlankContextMenu()
+{
+    m_blankContextMenu = new DMenu(this);
+
+    // ========== 模糊效果子菜单 ==========
+    DMenu *blurMenu = m_blankContextMenu->addMenu("模糊效果");
+
+    // 模糊半径子菜单
+    DMenu *radiusMenu = blurMenu->addMenu("模糊半径");
+    QAction *radiusLow = radiusMenu->addAction("低 (20)");
+    QAction *radiusMedium = radiusMenu->addAction("中 (40)");
+    QAction *radiusHigh = radiusMenu->addAction("高 (60)");
+
+    // 设置当前选中状态
+    radiusMedium->setCheckable(true);
+    radiusLow->setCheckable(true);
+    radiusHigh->setCheckable(true);
+
+    // 根据当前设置勾选对应选项
+    if (m_blurRadius <= 20) {
+        radiusLow->setChecked(true);
+    } else if (m_blurRadius >= 60) {
+        radiusHigh->setChecked(true);
+    } else {
+        radiusMedium->setChecked(true);
+    }
+
+    // 透明度子菜单
+    DMenu *alphaMenu = blurMenu->addMenu("背景透明度");
+    QAction *alphaLow = alphaMenu->addAction("低 (较透明, 120)");
+    QAction *alphaMedium = alphaMenu->addAction("中 (默认, 180)");
+    QAction *alphaHigh = alphaMenu->addAction("高 (较不透明, 220)");
+
+    alphaLow->setCheckable(true);
+    alphaMedium->setCheckable(true);
+    alphaHigh->setCheckable(true);
+
+    // 根据当前设置勾选对应选项
+    if (m_maskAlpha <= 120) {
+        alphaLow->setChecked(true);
+    } else if (m_maskAlpha >= 220) {
+        alphaHigh->setChecked(true);
+    } else {
+        alphaMedium->setChecked(true);
+    }
+
+    // 连接模糊半径信号
+    connect(radiusLow, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
+        setBlurRadius(20);
+        radiusLow->setChecked(true);
+        radiusMedium->setChecked(false);
+        radiusHigh->setChecked(false);
+    });
+    connect(radiusMedium, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
+        setBlurRadius(40);
+        radiusLow->setChecked(false);
+        radiusMedium->setChecked(true);
+        radiusHigh->setChecked(false);
+    });
+    connect(radiusHigh, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
+        setBlurRadius(60);
+        radiusLow->setChecked(false);
+        radiusMedium->setChecked(false);
+        radiusHigh->setChecked(true);
+    });
+
+    // 连接透明度信号
+    connect(alphaLow, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
+        setMaskAlpha(120);
+        alphaLow->setChecked(true);
+        alphaMedium->setChecked(false);
+        alphaHigh->setChecked(false);
+    });
+    connect(alphaMedium, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
+        setMaskAlpha(180);
+        alphaLow->setChecked(false);
+        alphaMedium->setChecked(true);
+        alphaHigh->setChecked(false);
+    });
+    connect(alphaHigh, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
+        setMaskAlpha(220);
+        alphaLow->setChecked(false);
+        alphaMedium->setChecked(false);
+        alphaHigh->setChecked(true);
+    });
+
+    // 分隔线
+    m_blankContextMenu->addSeparator();
+
+    // ========== 关闭选项 ==========
+    QAction *closeAction = m_blankContextMenu->addAction("关闭");
+    connect(closeAction, &QAction::triggered, this, &TodoWidget::closeWindow);
+}
+
+/**
+ * @brief 显示空白区域右键菜单
+ * @param pos 鼠标位置
+ *
+ * 当鼠标点击空白区域时显示设置菜单。
+ */
+void TodoWidget::showBlankContextMenu(const QPoint &pos)
+{
+    // 检查是否点击在列表项上，如果是则不显示空白菜单
+    QModelIndex index = m_listView->indexAt(mapFromGlobal(mapToGlobal(pos)));
+    if (index.isValid()) {
+        return;
+    }
+
+    m_blankContextMenu->exec(mapToGlobal(pos));
+}
+
+/**
+ * @brief 设置模糊半径
+ * @param radius 模糊半径值
+ *
+ * 更新模糊效果并保存设置。
+ */
+void TodoWidget::setBlurRadius(int radius)
+{
+    m_blurRadius = radius;
+    setRadius(radius);
+    saveBlurSettings();
+}
+
+/**
+ * @brief 设置背景透明度
+ * @param alpha 透明度值 (0-255)
+ *
+ * 更新背景透明度并保存设置。
+ */
+void TodoWidget::setMaskAlpha(int alpha)
+{
+    m_maskAlpha = alpha;
+    DBlurEffectWidget::setMaskAlpha(alpha);
+    saveBlurSettings();
+}
+
+/**
+ * @brief 关闭窗口
+ *
+ * 关闭父窗口（DesktopWidget）。
+ */
+void TodoWidget::closeWindow()
+{
+    // 查找父窗口并关闭
+    QWidget *parent = this->parentWidget();
+    if (parent) {
+        parent->close();
+    }
+}
+
+/**
+ * @brief 保存模糊效果设置
+ *
+ * 将模糊半径和透明度设置保存到配置文件。
+ */
+void TodoWidget::saveBlurSettings()
+{
+    QSettings settings("dtodo-widget", "blur");
+    settings.setValue("radius", m_blurRadius);
+    settings.setValue("alpha", m_maskAlpha);
+}
+
+/**
+ * @brief 加载模糊效果设置
+ *
+ * 从配置文件加载模糊效果设置。
+ */
+void TodoWidget::loadBlurSettings()
+{
+    QSettings settings("dtodo-widget", "blur");
+    m_blurRadius = settings.value("radius", 40).toInt();
+    m_maskAlpha = settings.value("alpha", 180).toInt();
+
+    // 限制范围
+    m_blurRadius = qBound(10, m_blurRadius, 100);
+    m_maskAlpha = qBound(50, m_maskAlpha, 255);
 }
