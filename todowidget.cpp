@@ -15,10 +15,12 @@
 #include <QTimer>
 #include <QMouseEvent>
 #include <QSettings>
+#include <QWidgetAction>
 #include <DPalette>
 #include <DGuiApplicationHelper>
 #include <DPaletteHelper>
 #include <DStyle>
+#include <DSlider>
 #include <DMainWindow>
 
 DWIDGET_USE_NAMESPACE
@@ -703,92 +705,81 @@ void TodoWidget::onDoubleClicked(const QModelIndex &index)
  * @brief 初始化空白区域右键菜单
  *
  * 创建包含模糊效果设置和关闭选项的右键菜单。
+ * 使用DSlider实现模糊效果和透明度的实时调整。
  */
 void TodoWidget::setupBlankContextMenu()
 {
     m_blankContextMenu = new DMenu(this);
 
-    // ========== 模糊效果子菜单 ==========
-    DMenu *blurMenu = m_blankContextMenu->addMenu("模糊效果");
+    // ========== 模糊半径滑块 ==========
+    // 创建模糊半径标签
+    QWidget *radiusLabelWidget = new QWidget();
+    QHBoxLayout *radiusLabelLayout = new QHBoxLayout(radiusLabelWidget);
+    radiusLabelLayout->setContentsMargins(10, 5, 10, 0);
+    DLabel *radiusLabel = new DLabel("模糊半径");
+    radiusLabelLayout->addWidget(radiusLabel);
+    radiusLabelLayout->addStretch();
 
-    // 模糊半径子菜单
-    DMenu *radiusMenu = blurMenu->addMenu("模糊半径");
-    QAction *radiusLow = radiusMenu->addAction("低 (20)");
-    QAction *radiusMedium = radiusMenu->addAction("中 (40)");
-    QAction *radiusHigh = radiusMenu->addAction("高 (60)");
+    QWidgetAction *radiusLabelAction = new QWidgetAction(m_blankContextMenu);
+    radiusLabelAction->setDefaultWidget(radiusLabelWidget);
+    m_blankContextMenu->addAction(radiusLabelAction);
 
-    // 设置当前选中状态
-    radiusMedium->setCheckable(true);
-    radiusLow->setCheckable(true);
-    radiusHigh->setCheckable(true);
+    // 创建模糊半径滑块容器（居中）
+    QWidget *radiusWidget = new QWidget();
+    QHBoxLayout *radiusLayout = new QHBoxLayout(radiusWidget);
+    radiusLayout->setContentsMargins(0, 0, 0, 0);
+    radiusLayout->addStretch();
 
-    // 根据当前设置勾选对应选项
-    if (m_blurRadius <= 20) {
-        radiusLow->setChecked(true);
-    } else if (m_blurRadius >= 60) {
-        radiusHigh->setChecked(true);
-    } else {
-        radiusMedium->setChecked(true);
-    }
+    DSlider *radiusSlider = new DSlider(Qt::Horizontal);
+    radiusSlider->setMinimum(10);
+    radiusSlider->setMaximum(100);
+    radiusSlider->setValue(m_blurRadius);
+    radiusSlider->setFixedWidth(150);
+    radiusLayout->addWidget(radiusSlider);
 
-    // 透明度子菜单
-    DMenu *alphaMenu = blurMenu->addMenu("背景透明度");
-    QAction *alphaLow = alphaMenu->addAction("低 (较透明, 120)");
-    QAction *alphaMedium = alphaMenu->addAction("中 (默认, 180)");
-    QAction *alphaHigh = alphaMenu->addAction("高 (较不透明, 220)");
+    radiusLayout->addStretch();
 
-    alphaLow->setCheckable(true);
-    alphaMedium->setCheckable(true);
-    alphaHigh->setCheckable(true);
+    QWidgetAction *radiusAction = new QWidgetAction(m_blankContextMenu);
+    radiusAction->setDefaultWidget(radiusWidget);
+    m_blankContextMenu->addAction(radiusAction);
 
-    // 根据当前设置勾选对应选项
-    if (m_maskAlpha <= 120) {
-        alphaLow->setChecked(true);
-    } else if (m_maskAlpha >= 220) {
-        alphaHigh->setChecked(true);
-    } else {
-        alphaMedium->setChecked(true);
-    }
+    // 连接滑块信号
+    connect(radiusSlider, &DSlider::valueChanged, this, &TodoWidget::setBlurRadius);
 
-    // 连接模糊半径信号
-    connect(radiusLow, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
-        setBlurRadius(20);
-        radiusLow->setChecked(true);
-        radiusMedium->setChecked(false);
-        radiusHigh->setChecked(false);
-    });
-    connect(radiusMedium, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
-        setBlurRadius(40);
-        radiusLow->setChecked(false);
-        radiusMedium->setChecked(true);
-        radiusHigh->setChecked(false);
-    });
-    connect(radiusHigh, &QAction::triggered, this, [this, radiusLow, radiusMedium, radiusHigh]() {
-        setBlurRadius(60);
-        radiusLow->setChecked(false);
-        radiusMedium->setChecked(false);
-        radiusHigh->setChecked(true);
-    });
+    // ========== 透明度滑块 ==========
+    // 创建透明度标签
+    QWidget *alphaLabelWidget = new QWidget();
+    QHBoxLayout *alphaLabelLayout = new QHBoxLayout(alphaLabelWidget);
+    alphaLabelLayout->setContentsMargins(10, 5, 10, 0);
+    DLabel *alphaLabel = new DLabel("背景透明度");
+    alphaLabelLayout->addWidget(alphaLabel);
+    alphaLabelLayout->addStretch();
 
-    // 连接透明度信号
-    connect(alphaLow, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
-        setMaskAlpha(120);
-        alphaLow->setChecked(true);
-        alphaMedium->setChecked(false);
-        alphaHigh->setChecked(false);
-    });
-    connect(alphaMedium, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
-        setMaskAlpha(180);
-        alphaLow->setChecked(false);
-        alphaMedium->setChecked(true);
-        alphaHigh->setChecked(false);
-    });
-    connect(alphaHigh, &QAction::triggered, this, [this, alphaLow, alphaMedium, alphaHigh]() {
-        setMaskAlpha(220);
-        alphaLow->setChecked(false);
-        alphaMedium->setChecked(false);
-        alphaHigh->setChecked(true);
-    });
+    QWidgetAction *alphaLabelAction = new QWidgetAction(m_blankContextMenu);
+    alphaLabelAction->setDefaultWidget(alphaLabelWidget);
+    m_blankContextMenu->addAction(alphaLabelAction);
+
+    // 创建透明度滑块容器（居中）
+    QWidget *alphaWidget = new QWidget();
+    QHBoxLayout *alphaLayout = new QHBoxLayout(alphaWidget);
+    alphaLayout->setContentsMargins(0, 0, 0, 0);
+    alphaLayout->addStretch();
+
+    DSlider *alphaSlider = new DSlider(Qt::Horizontal);
+    alphaSlider->setMinimum(50);
+    alphaSlider->setMaximum(255);
+    alphaSlider->setValue(m_maskAlpha);
+    alphaSlider->setFixedWidth(150);
+    alphaLayout->addWidget(alphaSlider);
+
+    alphaLayout->addStretch();
+
+    QWidgetAction *alphaAction = new QWidgetAction(m_blankContextMenu);
+    alphaAction->setDefaultWidget(alphaWidget);
+    m_blankContextMenu->addAction(alphaAction);
+
+    // 连接滑块信号
+    connect(alphaSlider, &DSlider::valueChanged, this, &TodoWidget::setMaskAlpha);
 
     // 分隔线
     m_blankContextMenu->addSeparator();
