@@ -1,3 +1,8 @@
+/**
+ * @file todowidget.cpp
+ * @brief TodoWidget 实现
+ */
+
 #include "todowidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -7,40 +12,64 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDir>
-#include <QGraphicsDropShadowEffect>
+#include <QTimer>
+#include <QMouseEvent>
 #include <DPalette>
 #include <DGuiApplicationHelper>
 #include <DPaletteHelper>
+#include <DStyle>
 
 DWIDGET_USE_NAMESPACE
 
+/**
+ * @brief 构造函数实现
+ *
+ * 初始化毛玻璃效果、UI 界面、加载已保存的数据。
+ */
 TodoWidget::TodoWidget(QWidget *parent)
     : DBlurEffectWidget(parent)
     , m_nextId(1)
     , m_contextMenu(nullptr)
+    , m_isEditing(false)
+    , m_hoveredRow(-1)
 {
     // 设置模糊特效 - 符合 DTK 设计规范的毛玻璃效果
     setMode(DBlurEffectWidget::GaussianBlur);
     setBlendMode(DBlurEffectWidget::BehindWindowBlend);
-    setRadius(30);
-    setBlurRectXRadius(12);
-    setBlurRectYRadius(12);
+    setRadius(40);                      // 模糊半径
+    setBlurRectXRadius(12);             // 圆角 X 半径
+    setBlurRectYRadius(12);             // 圆角 Y 半径
 
     // 使用 AutoColor 自动跟随主题
     // 浅色主题白色背景，深色主题深色背景
     setMaskColor(AutoColor);
 
+    // 设置背景不透明度，增强模糊和透明效果
+    setMaskAlpha(180);
+
+    // 初始化 UI
     setupUI();
+
+    // 加载已保存的待办事项
     loadTodos();
+
+    // 延迟更新主题颜色，确保 widget 完全初始化
+    QTimer::singleShot(0, this, &TodoWidget::updateThemeColors);
 }
 
+/**
+ * @brief 初始化用户界面
+ *
+ * 创建输入区域、列表视图、空状态提示、底部统计和右键菜单。
+ */
 void TodoWidget::setupUI()
 {
+    // 主布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(16, 16, 16, 16);
     mainLayout->setSpacing(12);
 
-    // 输入区域
+    // ========== 输入区域 ==========
     QHBoxLayout *inputLayout = new QHBoxLayout();
     inputLayout->setSpacing(10);
 
@@ -56,6 +85,7 @@ void TodoWidget::setupUI()
 
     mainLayout->addLayout(inputLayout);
 
+    // ========== 列表区域 ==========
     // 使用 QStackedWidget 实现空态切换
     m_stackWidget = new QStackedWidget(this);
 
@@ -65,6 +95,7 @@ void TodoWidget::setupUI()
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
 
+    // 列表视图
     m_listView = new DListView(m_listContainer);
     m_listView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_listView->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -72,16 +103,23 @@ void TodoWidget::setupUI()
     m_listView->setItemSpacing(6);
     m_listView->setContextMenuPolicy(Qt::CustomContextMenu);
     m_listView->setViewportMargins(0, 0, 0, 0);
+    m_listView->setMouseTracking(true);     // 启用鼠标追踪以检测悬停
 
-    // 启用 hover 效果
-    m_listView->setMouseTracking(true);
+    // 启用拖拽排序（参考 DTK 示例）
+    m_listView->setDragDropMode(QListView::InternalMove);
 
+    // 数据模型
     m_model = new QStandardItemModel(this);
+    // 设置 item 原型为 DStandardItem，确保拖拽时数据保留
+    m_model->setItemPrototype(new DStandardItem());
     m_listView->setModel(m_model);
+
+    // 安装事件过滤器以处理悬停事件
+    m_listView->viewport()->installEventFilter(this);
 
     listLayout->addWidget(m_listView);
 
-    // 空态提示
+    // ========== 空态提示 ==========
     QWidget *emptyWidget = new QWidget(m_stackWidget);
     QVBoxLayout *emptyLayout = new QVBoxLayout(emptyWidget);
     emptyLayout->setAlignment(Qt::AlignCenter);
@@ -89,7 +127,6 @@ void TodoWidget::setupUI()
     m_emptyLabel = new DLabel(emptyWidget);
     m_emptyLabel->setText("暂无待办事项\n输入内容后按回车添加");
     m_emptyLabel->setAlignment(Qt::AlignCenter);
-    // 使用 DTK 主题色设置空态提示文字颜色
     DPalette pa = DPaletteHelper::instance()->palette(m_emptyLabel);
     pa.setColor(DPalette::WindowText, pa.color(DPalette::PlaceholderText));
     DPaletteHelper::instance()->setPalette(m_emptyLabel, pa);
@@ -102,7 +139,7 @@ void TodoWidget::setupUI()
 
     mainLayout->addWidget(m_stackWidget, 1);
 
-    // 底部统计
+    // ========== 底部统计 ==========
     QHBoxLayout *bottomLayout = new QHBoxLayout();
     m_countLabel = new DLabel("共 0 项", this);
     bottomLayout->addWidget(m_countLabel);
@@ -110,16 +147,41 @@ void TodoWidget::setupUI()
 
     mainLayout->addLayout(bottomLayout);
 
-    // 右键菜单
+    // ========== 右键菜单 ==========
     m_contextMenu = new DMenu(this);
+    QAction *editAction = m_contextMenu->addAction("编辑");
     QAction *toggleAction = m_contextMenu->addAction("切换完成状态");
     QAction *deleteAction = m_contextMenu->addAction("删除");
 
-    // 连接信号
+    // ========== 连接信号 ==========
     connect(addBtn, &DPushButton::clicked, this, &TodoWidget::addTodo);
     connect(m_inputEdit, &DLineEdit::returnPressed, this, &TodoWidget::onReturnPressed);
-    connect(m_listView, &DListView::doubleClicked, this, &TodoWidget::toggleCompleted);
+    connect(m_listView, &DListView::doubleClicked, this, &TodoWidget::onDoubleClicked);
     connect(m_listView, &DListView::customContextMenuRequested, this, &TodoWidget::showContextMenu);
+    connect(m_model, &QStandardItemModel::itemChanged, this, &TodoWidget::onItemChanged);
+
+    // 新插入行后更新拖拽属性
+    connect(m_model, &QStandardItemModel::rowsInserted, this, [this]() {
+        for (int i = 0; i < m_model->rowCount(); ++i) {
+            QStandardItem *item = m_model->item(i);
+            if (item) {
+                item->setDragEnabled(true);
+                item->setDropEnabled(false);
+            }
+        }
+    });
+
+    // 拖拽完成后保存数据
+    connect(m_model, &QStandardItemModel::rowsMoved, this, [this]() {
+        saveTodos();
+    });
+
+    // 右键菜单动作
+    connect(editAction, &QAction::triggered, this, [this]() {
+        if (m_contextIndex.isValid()) {
+            m_listView->edit(m_contextIndex);
+        }
+    });
     connect(toggleAction, &QAction::triggered, this, [this]() {
         if (m_contextIndex.isValid()) {
             toggleCompleted(m_contextIndex);
@@ -127,10 +189,56 @@ void TodoWidget::setupUI()
     });
     connect(deleteAction, &QAction::triggered, this, &TodoWidget::removeTodo);
 
+    // 监听主题变化
+    connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged,
+            this, &TodoWidget::updateThemeColors);
+
     updateCountLabel();
     updateEmptyState();
 }
 
+/**
+ * @brief 事件过滤器 - 处理列表项悬停事件
+ *
+ * 当鼠标进入某个列表项时，显示该行的操作按钮；
+ * 当鼠标离开时，隐藏操作按钮。
+ */
+bool TodoWidget::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_listView->viewport()) {
+        // 鼠标移动事件 - 检测悬停的列表项
+        if (event->type() == QEvent::MouseMove) {
+            QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
+            QModelIndex index = m_listView->indexAt(mouseEvent->pos());
+            int currentRow = index.isValid() ? index.row() : -1;
+
+            // 如果悬停的行发生变化
+            if (currentRow != m_hoveredRow) {
+                // 隐藏之前悬停行的操作按钮
+                if (m_hoveredRow >= 0 && m_hoveredRow < m_model->rowCount()) {
+                    setActionsVisible(m_hoveredRow, false);
+                }
+                // 显示当前悬停行的操作按钮
+                if (currentRow >= 0) {
+                    setActionsVisible(currentRow, true);
+                }
+                m_hoveredRow = currentRow;
+            }
+        }
+        // 鼠标离开事件 - 隐藏所有操作按钮
+        else if (event->type() == QEvent::Leave) {
+            if (m_hoveredRow >= 0 && m_hoveredRow < m_model->rowCount()) {
+                setActionsVisible(m_hoveredRow, false);
+            }
+            m_hoveredRow = -1;
+        }
+    }
+    return DBlurEffectWidget::eventFilter(watched, event);
+}
+
+/**
+ * @brief 添加新的待办事项
+ */
 void TodoWidget::addTodo()
 {
     QString text = m_inputEdit->text().trimmed();
@@ -138,14 +246,25 @@ void TodoWidget::addTodo()
         return;
     }
 
+    // 创建待办事项数据
     TodoItem item(text);
     item.setId(m_nextId++);
     m_todos.append(item);
 
-    QStandardItem *modelItem = new QStandardItem(text);
-    modelItem->setCheckable(true);
-    modelItem->setCheckState(Qt::Unchecked);
+    // 创建列表项（使用 DStandardItem）
+    DStandardItem *modelItem = new DStandardItem(text);
+    modelItem->setEditable(true);
+    modelItem->setDragEnabled(true);
+    modelItem->setDropEnabled(false);
+    modelItem->setData(item.id(), Qt::UserRole);
+
+    // 设置操作按钮（初始隐藏）
+    setupItemActions(modelItem, item.id());
+
     m_model->appendRow(modelItem);
+
+    // 应用外观样式
+    updateItemAppearance(m_model->rowCount() - 1);
 
     m_inputEdit->clear();
     updateCountLabel();
@@ -153,56 +272,148 @@ void TodoWidget::addTodo()
     saveTodos();
 }
 
-void TodoWidget::removeTodo()
+/**
+ * @brief 为列表项设置操作按钮
+ *
+ * 在列表项右侧添加完成和删除按钮，初始状态为隐藏。
+ */
+void TodoWidget::setupItemActions(DStandardItem *item, int todoId)
 {
-    if (!m_contextIndex.isValid()) return;
+    // 完成按钮
+    DViewItemAction *completeAction = new DViewItemAction(Qt::AlignVCenter, QSize(20, 20), QSize(20, 20), true);
+    completeAction->setIcon(QIcon::fromTheme("dialog-ok"));
+    completeAction->setToolTip("标记完成");
+    completeAction->setVisible(false);  // 初始隐藏
 
-    int row = m_contextIndex.row();
-    if (row >= 0 && row < m_todos.size()) {
-        m_todos.removeAt(row);
-    }
-    m_model->removeRow(row);
+    // 删除按钮
+    DViewItemAction *deleteAction = new DViewItemAction(Qt::AlignVCenter, QSize(20, 20), QSize(20, 20), true);
+    deleteAction->setIcon(QIcon::fromTheme("edit-delete"));
+    deleteAction->setToolTip("删除");
+    deleteAction->setVisible(false);    // 初始隐藏
 
-    updateCountLabel();
-    updateEmptyState();
-    saveTodos();
+    // 连接信号
+    connect(completeAction, &DViewItemAction::triggered, this, [this, todoId]() {
+        toggleCompletedById(todoId);
+    });
+
+    connect(deleteAction, &DViewItemAction::triggered, this, [this, todoId]() {
+        removeTodoById(todoId);
+    });
+
+    // 设置到列表项右侧
+    item->setActionList(Qt::Edge::RightEdge, {completeAction, deleteAction});
 }
 
-void TodoWidget::toggleCompleted(const QModelIndex &index)
+/**
+ * @brief 设置列表项操作按钮的可见性
+ */
+void TodoWidget::setActionsVisible(int row, bool visible)
 {
-    if (!index.isValid()) return;
+    if (row < 0 || row >= m_model->rowCount()) return;
 
-    int row = index.row();
-    if (row >= 0 && row < m_todos.size()) {
-        bool completed = !m_todos[row].completed();
-        m_todos[row].setCompleted(completed);
+    DStandardItem *item = dynamic_cast<DStandardItem *>(m_model->item(row));
+    if (!item) return;
 
-        QStandardItem *item = m_model->item(row);
-        if (item) {
-            item->setCheckState(completed ? Qt::Checked : Qt::Unchecked);
-            QFont font = item->font();
-            font.setStrikeOut(completed);
-            item->setFont(font);
+    DViewItemActionList actions = item->actionList(Qt::RightEdge);
+    for (DViewItemAction *action : actions) {
+        action->setVisible(visible);
+    }
 
-            // 使用 DTK 主题色区分完成状态的前景色
-            // 已完成项使用 PlaceholderText 颜色（次要文字色）
-            DPalette pa = DPaletteHelper::instance()->palette(m_listView);
-            if (completed) {
-                item->setForeground(pa.color(DPalette::PlaceholderText));
-            } else {
-                item->setForeground(pa.color(DPalette::Text));
+    // 刷新显示
+    m_listView->update(m_model->index(row, 0));
+}
+
+/**
+ * @brief 根据 ID 切换待办事项的完成状态
+ */
+void TodoWidget::toggleCompletedById(int todoId)
+{
+    for (int i = 0; i < m_todos.size(); ++i) {
+        if (m_todos[i].id() == todoId) {
+            bool completed = !m_todos[i].completed();
+            m_todos[i].setCompleted(completed);
+
+            // 更新外观
+            for (int row = 0; row < m_model->rowCount(); ++row) {
+                QStandardItem *item = m_model->item(row);
+                if (item && item->data(Qt::UserRole).toInt() == todoId) {
+                    updateItemAppearance(row);
+                    break;
+                }
             }
+            break;
         }
     }
     updateCountLabel();
     saveTodos();
 }
 
+/**
+ * @brief 根据 ID 删除待办事项
+ */
+void TodoWidget::removeTodoById(int todoId)
+{
+    // 从数据列表中移除
+    for (int i = 0; i < m_todos.size(); ++i) {
+        if (m_todos[i].id() == todoId) {
+            m_todos.removeAt(i);
+            break;
+        }
+    }
+
+    // 从模型中移除
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        QStandardItem *item = m_model->item(row);
+        if (item && item->data(Qt::UserRole).toInt() == todoId) {
+            m_model->removeRow(row);
+            break;
+        }
+    }
+
+    updateCountLabel();
+    updateEmptyState();
+    saveTodos();
+}
+
+/**
+ * @brief 删除当前选中的待办事项（右键菜单触发）
+ */
+void TodoWidget::removeTodo()
+{
+    if (!m_contextIndex.isValid()) return;
+
+    QStandardItem *item = m_model->item(m_contextIndex.row());
+    if (!item) return;
+
+    int todoId = item->data(Qt::UserRole).toInt();
+    removeTodoById(todoId);
+}
+
+/**
+ * @brief 切换待办事项的完成状态
+ */
+void TodoWidget::toggleCompleted(const QModelIndex &index)
+{
+    if (!index.isValid()) return;
+
+    QStandardItem *item = m_model->item(index.row());
+    if (!item) return;
+
+    int todoId = item->data(Qt::UserRole).toInt();
+    toggleCompletedById(todoId);
+}
+
+/**
+ * @brief 回车键按下时添加待办事项
+ */
 void TodoWidget::onReturnPressed()
 {
     addTodo();
 }
 
+/**
+ * @brief 显示右键上下文菜单
+ */
 void TodoWidget::showContextMenu(const QPoint &pos)
 {
     QModelIndex index = m_listView->indexAt(pos);
@@ -212,6 +423,9 @@ void TodoWidget::showContextMenu(const QPoint &pos)
     }
 }
 
+/**
+ * @brief 更新底部统计标签
+ */
 void TodoWidget::updateCountLabel()
 {
     int total = m_todos.size();
@@ -222,6 +436,9 @@ void TodoWidget::updateCountLabel()
     m_countLabel->setText(QString("共 %1 项 | 已完成 %2 项").arg(total).arg(completed));
 }
 
+/**
+ * @brief 更新空状态显示
+ */
 void TodoWidget::updateEmptyState()
 {
     if (m_model->rowCount() == 0) {
@@ -231,8 +448,30 @@ void TodoWidget::updateEmptyState()
     }
 }
 
+/**
+ * @brief 保存待办事项到文件
+ *
+ * 先根据模型顺序同步数据，再写入 JSON 文件。
+ */
 void TodoWidget::saveTodos()
 {
+    // 根据 model 当前顺序同步 m_todos
+    QList<TodoItem> newTodos;
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        QStandardItem *modelItem = m_model->item(i);
+        if (modelItem) {
+            int todoId = modelItem->data(Qt::UserRole).toInt();
+            for (const auto &todo : m_todos) {
+                if (todo.id() == todoId) {
+                    newTodos.append(todo);
+                    break;
+                }
+            }
+        }
+    }
+    m_todos = newTodos;
+
+    // 写入文件
     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir dir(dataPath);
     if (!dir.exists()) {
@@ -256,6 +495,9 @@ void TodoWidget::saveTodos()
     }
 }
 
+/**
+ * @brief 从文件加载待办事项
+ */
 void TodoWidget::loadTodos()
 {
     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -295,17 +537,122 @@ void TodoWidget::loadTodos()
                 m_nextId = item.id() + 1;
             }
 
-            QStandardItem *modelItem = new QStandardItem(item.text());
-            modelItem->setCheckable(true);
-            modelItem->setCheckState(item.completed() ? Qt::Checked : Qt::Unchecked);
-            if (item.completed()) {
-                QFont font = modelItem->font();
-                font.setStrikeOut(true);
-                modelItem->setFont(font);
-            }
+            // 创建列表项
+            DStandardItem *modelItem = new DStandardItem(item.text());
+            modelItem->setEditable(true);
+            modelItem->setDragEnabled(true);
+            modelItem->setDropEnabled(false);
+            modelItem->setData(item.id(), Qt::UserRole);
+
+            // 设置操作按钮（初始隐藏）
+            setupItemActions(modelItem, item.id());
+
             m_model->appendRow(modelItem);
+
+            // 应用外观样式
+            updateItemAppearance(m_model->rowCount() - 1);
         }
     }
     updateCountLabel();
     updateEmptyState();
+}
+
+/**
+ * @brief 更新主题颜色
+ */
+void TodoWidget::updateThemeColors()
+{
+    if (m_inputEdit) {
+        DPalette inputPa = DPaletteHelper::instance()->palette(m_inputEdit);
+        m_inputEdit->setPalette(inputPa);
+    }
+
+    if (m_emptyLabel) {
+        DPalette emptyPa = DPaletteHelper::instance()->palette(m_emptyLabel);
+        emptyPa.setColor(DPalette::WindowText, emptyPa.color(DPalette::PlaceholderText));
+        DPaletteHelper::instance()->setPalette(m_emptyLabel, emptyPa);
+    }
+
+    if (m_model && m_listView) {
+        for (int i = 0; i < m_model->rowCount(); ++i) {
+            updateItemAppearance(i);
+        }
+    }
+}
+
+/**
+ * @brief 更新列表项外观
+ *
+ * 根据完成状态设置文字样式：已完成项显示删除线并使用次要文字颜色。
+ */
+void TodoWidget::updateItemAppearance(int row)
+{
+    if (row < 0 || row >= m_model->rowCount()) return;
+
+    QStandardItem *item = m_model->item(row);
+    if (!item) return;
+
+    int todoId = item->data(Qt::UserRole).toInt();
+
+    // 查找对应的待办事项获取完成状态
+    bool completed = false;
+    for (const auto &todo : m_todos) {
+        if (todo.id() == todoId) {
+            completed = todo.completed();
+            break;
+        }
+    }
+
+    // 设置字体样式（已完成项显示删除线）
+    QFont font = item->font();
+    font.setStrikeOut(completed);
+    item->setFont(font);
+
+    // 设置前景色（已完成项使用次要文字颜色）
+    DPalette pa = DPaletteHelper::instance()->palette(m_listView);
+    if (completed) {
+        item->setForeground(pa.color(DPalette::PlaceholderText));
+    } else {
+        item->setForeground(pa.color(DPalette::Text));
+    }
+
+    // 设置背景色
+    QColor bgColor = pa.color(DPalette::Base);
+    bgColor.setAlpha(200);
+    item->setBackground(bgColor);
+}
+
+/**
+ * @brief 列表项数据变化时的处理
+ *
+ * 处理文本编辑后的保存。
+ */
+void TodoWidget::onItemChanged(QStandardItem *item)
+{
+    if (!item || m_isEditing) return;
+
+    int todoId = item->data(Qt::UserRole).toInt();
+
+    for (int i = 0; i < m_todos.size(); ++i) {
+        if (m_todos[i].id() == todoId) {
+            // 检查是否是文本编辑
+            if (item->text() != m_todos[i].text()) {
+                m_todos[i].setText(item->text());
+                saveTodos();
+            }
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 双击列表项进入编辑模式
+ */
+void TodoWidget::onDoubleClicked(const QModelIndex &index)
+{
+    if (!index.isValid()) return;
+
+    m_isEditing = true;
+    m_listView->edit(index);
+    QTimer::singleShot(100, this, [this]() { m_isEditing = false; });
 }

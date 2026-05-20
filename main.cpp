@@ -57,6 +57,9 @@ public:
         m_todoWidget->setMouseTracking(true);
         setCentralWidget(m_todoWidget);
 
+        // 更新背景颜色（需要在 m_todoWidget 创建之后）
+        updateBackgroundColor();
+
         // 设置最小和初始大小
         setMinimumSize(250, 300);
         resize(350, 500);
@@ -68,6 +71,7 @@ public:
         connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
             updateBorderColor();
             updateShadowColor();
+            updateBackgroundColor();
         });
     }
 
@@ -231,6 +235,14 @@ private:
         DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType
             ? setShadowColor(QColor(0, 0, 0, 80))
             : setShadowColor(QColor(0, 0, 0, 60));
+    }
+
+    // 更新 TodoWidget 的背景色以确保文字可读性
+    void updateBackgroundColor()
+    {
+        if (m_todoWidget) {
+            m_todoWidget->updateThemeColors();
+        }
     }
 
     void saveGeometry()
