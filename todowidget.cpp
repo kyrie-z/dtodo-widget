@@ -458,8 +458,6 @@ void TodoWidget::setupItemActions(DStandardItem *item, int todoId, bool complete
     timeAction->setText(createdAt.toString("MM-dd hh:mm"));
     timeAction->setTextColorRole(DPalette::PlaceholderText);
     timeAction->setVisible(m_showCreateTime);
-    item->setActionList(Qt::Edge::LeftEdge, {timeAction});
-
     // 右侧完成按钮 - 创建深色勾选图标
     DViewItemAction *completeAction = new DViewItemAction(Qt::AlignVCenter, QSize(24, 24), QSize(24, 24), true);
     completeAction->setIcon(createCheckIcon(completed));
@@ -481,8 +479,8 @@ void TodoWidget::setupItemActions(DStandardItem *item, int todoId, bool complete
         removeTodoById(todoId);
     });
 
-    // 设置到列表项右侧
-    item->setActionList(Qt::Edge::RightEdge, {completeAction, deleteAction});
+    // 设置到列表项右侧（时间 → 完成 → 删除）
+    item->setActionList(Qt::Edge::RightEdge, {timeAction, completeAction, deleteAction});
 }
 
 /**
@@ -498,8 +496,8 @@ void TodoWidget::updateActionIconColor(int row, bool completed)
     if (!item) return;
 
     DViewItemActionList actions = item->actionList(Qt::RightEdge);
-    if (actions.size() > 0) {
-        actions[0]->setIcon(createCheckIcon(completed));
+    if (actions.size() > 1) {
+        actions[1]->setIcon(createCheckIcon(completed));
     }
 
     // 刷新显示
@@ -517,8 +515,12 @@ void TodoWidget::setActionsVisible(int row, bool visible)
     if (!item) return;
 
     DViewItemActionList actions = item->actionList(Qt::RightEdge);
-    for (DViewItemAction *action : actions) {
-        action->setVisible(visible);
+    for (int i = 0; i < actions.size(); ++i) {
+        if (i == 0) {
+            actions[0]->setVisible(m_showCreateTime);  // 时间标签
+        } else {
+            actions[i]->setVisible(visible);            // 操作按钮
+        }
     }
 
     // 刷新显示
@@ -1171,9 +1173,9 @@ void TodoWidget::updateTimeLabels()
         DStandardItem *item = dynamic_cast<DStandardItem *>(m_model->item(i));
         if (!item) continue;
 
-        DViewItemActionList leftActions = item->actionList(Qt::LeftEdge);
-        for (auto *action : leftActions) {
-            action->setVisible(m_showCreateTime);
+        DViewItemActionList rightActions = item->actionList(Qt::RightEdge);
+        if (!rightActions.isEmpty()) {
+            rightActions[0]->setVisible(m_showCreateTime);
         }
         m_listView->update(m_model->index(i, 0));
     }
