@@ -16,6 +16,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 #include <QWidgetAction>
+#include <QLabel>
 #include <QPainter>
 #include <DPalette>
 #include <DGuiApplicationHelper>
@@ -453,8 +454,9 @@ void TodoWidget::setupItemActions(DStandardItem *item, int todoId, bool complete
     }
 
     // 左侧创建时间标签
-    DViewItemAction *timeAction = new DViewItemAction(Qt::AlignVCenter, QSize(), QSize(), false);
-    timeAction->setText(createdAt.toString("MM-dd"));
+    DViewItemAction *timeAction = new DViewItemAction(Qt::AlignVCenter, QSize(0,0), QSize(0,0), false);
+    timeAction->setText(createdAt.toString("MM-dd hh:mm"));
+    timeAction->setTextColorRole(DPalette::PlaceholderText);
     timeAction->setVisible(m_showCreateTime);
     item->setActionList(Qt::Edge::LeftEdge, {timeAction});
 
