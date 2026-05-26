@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- 圆角矩形背景 -->
+  <rect x="4" y="4" width="40" height="40" rx="8" ry="8" fill="#3A7BD5"/>
+  <!-- 白色对勾 -->
+  <path d="M14 24 L21 32 L34 18" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

@@ -41,4 +41,4 @@ target_include_directories(dtodo-widget PRIVATE
 # Install rules
 install(TARGETS dtodo-widget RUNTIME DESTINATION bin)
 install(FILES dtodo-widget.desktop DESTINATION share/applications)
-install(FILES icons/dtodo-widget.svg DESTINATION share/icons/hicolor/scalable/apps)
+install(FILES icons/dtodo-widget.svg icons/dtodo-widget-tray.svg DESTINATION share/icons/hicolor/scalable/apps)

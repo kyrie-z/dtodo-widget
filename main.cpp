@@ -11,6 +11,16 @@
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QCloseEvent>
+#include <QTimer>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QFile>
+
+#ifdef Q_OS_LINUX
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
+#endif
 
 DWIDGET_USE_NAMESPACE
 
@@ -26,7 +36,7 @@ public:
         , m_resizeEdge(EdgeNone)
     {
         // 无边框、保持在底部 - 桌面小组件风格
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint);
+        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnBottomHint | Qt::Tool);
 
         // 隐藏标题栏并设置固定高度为 0
         titlebar()->setFixedHeight(0);
@@ -66,6 +76,16 @@ public:
 
         // 加载保存的位置和大小
         loadGeometry();
+
+#ifdef Q_OS_LINUX
+        // 延迟设置窗口类型，确保窗口已创建
+        QTimer::singleShot(100, this, [this]() {
+            setUtilityWindowType();
+        });
+#endif
+
+        // 创建系统托盘
+        setupTrayIcon();
 
         // 监听主题变化，更新边框和阴影颜色
         connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
@@ -274,7 +294,68 @@ private:
         }
     }
 
+#ifdef Q_OS_LINUX
+    void setUtilityWindowType()
+    {
+        Display *display = XOpenDisplay(nullptr);
+        if (!display) return;
+
+        Window xWinId = static_cast<Window>(winId());
+
+        // 设置窗口类型为 UTILITY，不会被显示桌面最小化，且可以输入
+        Atom typeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+        Atom utilityAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+        XChangeProperty(display, xWinId, typeAtom, XA_ATOM, 32,
+                        PropModeReplace, (unsigned char *)&utilityAtom, 1);
+
+        XFlush(display);
+        XCloseDisplay(display);
+    }
+#endif
+
+    void setupTrayIcon()
+    {
+        m_trayIcon = new QSystemTrayIcon(this);
+        // 优先使用系统图标路径，fallback 到资源路径
+        QString trayIconPath = "/usr/share/icons/hicolor/scalable/apps/dtodo-widget-tray.svg";
+        if (QFile::exists(trayIconPath)) {
+            m_trayIcon->setIcon(QIcon(trayIconPath));
+        } else {
+            m_trayIcon->setIcon(QIcon(":/icons/dtodo-widget-tray.svg"));
+        }
+        m_trayIcon->setToolTip("Todo 小组件");
+
+        QMenu *trayMenu = new QMenu();
+        QAction *showAction = trayMenu->addAction("显示窗口");
+        QAction *hideAction = trayMenu->addAction("隐藏窗口");
+        trayMenu->addSeparator();
+        QAction *quitAction = trayMenu->addAction("退出");
+
+        connect(showAction, &QAction::triggered, this, [this]() {
+            show();
+            raise();
+        });
+        connect(hideAction, &QAction::triggered, this, &QWidget::hide);
+        connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+
+        m_trayIcon->setContextMenu(trayMenu);
+
+        connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+            if (reason == QSystemTrayIcon::Trigger) {
+                if (isVisible()) {
+                    hide();
+                } else {
+                    show();
+                    raise();
+                }
+            }
+        });
+
+        m_trayIcon->show();
+    }
+
     TodoWidget *m_todoWidget;
+    QSystemTrayIcon *m_trayIcon;
     bool m_dragging;
     bool m_resizing;
     QPoint m_dragPos;
